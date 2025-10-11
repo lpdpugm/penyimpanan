@@ -6,7 +6,7 @@
 <h1 align="center">📁 Penyimpanan Berkas — Kelurahan LPDP UGM</h1>
 
 <p align="center">
-  Repositori ini berfungsi sebagai <strong>penyimpanan terpusat</strong> untuk berkas publik 
+  Repositori ini berfungsi sebagai <strong>penyimpanan </strong> untuk berkas publik 
   seperti <em>gambar, dokumen PDF, dan media lainnya</em> yang digunakan pada proyek-proyek 
   dan publikasi resmi <strong>Kelurahan LPDP UGM</strong>.
 </p>
