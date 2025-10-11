@@ -1,6 +1,6 @@
 <!-- HEADER -->
 <p align="center">
-  <img src="[https://lpdpugm.or.id/wp-content/uploads/2024/11/logo-lpdp-ugm-3x-e1739927322830.png]" alt="Kelurahan LPDP UGM" width="120" />
+  <img src="https://lpdpugm.or.id/wp-content/uploads/2024/11/logo-lpdp-ugm-3x-e1739927322830.png" alt="Kelurahan LPDP UGM" width="120" />
 </p>
 
 <h1 align="center">📁 Penyimpanan Berkas — Kelurahan LPDP UGM</h1>
