@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <title>Upload File ke Repo GitHub</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 40px; }
+    .container { max-width: 800px; margin: auto; }
+    input, button, textarea { padding: 8px; margin: 5px 0; width: 100%; }
+    .warning { color: red; font-size: 0.9em; }
+    .success { color: green; }
+    .error { color: red; }
+    .url { font-family: monospace; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Upload File ke Repo GitHub</h1>
+    <p class="warning">
+      ⚠️ Ini akan meng-upload file langsung ke repo kamu via GitHub API.<br>
+      Gunakan dengan token yang aman dan repo yang benar. Jangan bagikan halaman ini secara publik.
+    </p>
+
+    <label for="token">GitHub Token:</label>
+    <input type="password" id="token" placeholder="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" required />
+
+    <label for="owner">Owner (username):</label>
+    <input type="text" id="owner" placeholder="lpdpugm" required />
+
+    <label for="repo">Repo:</label>
+    <input type="text" id="repo" placeholder="penyimpanan" required />
+
+    <label for="branch">Branch (default: main):</label>
+    <input type="text" id="branch" placeholder="main" value="main" />
+
+    <label for="folder">Folder Tujuan (opsional):</label>
+    <input type="text" id="folder" placeholder="contoh: uploads/" value="uploads/" />
+
+    <label for="file">Pilih File:</label>
+    <input type="file" id="file" required />
+
+    <button onclick="uploadFile()">Upload ke GitHub</button>
+
+    <div id="result"></div>
+  </div>
+
+  <script>
+    async function uploadFile() {
+      const token = document.getElementById('token').value.trim();
+      const owner = document.getElementById('owner').value.trim();
+      const repo = document.getElementById('repo').value.trim();
+      const branch = document.getElementById('branch').value.trim() || 'main';
+      const folder = document.getElementById('folder').value.trim() || '';
+      const fileInput = document.getElementById('file');
+      const resultDiv = document.getElementById('result');
+
+      if (!token || !owner || !repo || !fileInput.files[0]) {
+        resultDiv.innerHTML = '<p class="error">Semua field harus diisi.</p>';
+        return;
+      }
+
+      const file = fileInput.files[0];
+      const fileName = file.name;
+      const filePath = (folder ? folder.replace(/\/$/, '') + '/' : '') + fileName;
+
+      resultDiv.innerHTML = '<p>Uploading...</p>';
+
+      try {
+        const content = await readFileAsBase64(file);
+
+        // GitHub API: Get current commit SHA untuk branch
+        const branchInfo = await fetch(
+          `https://api.github.com/repos/${owner}/${repo}/branches/${branch}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        ).then(r => r.json());
+
+        const sha = branchInfo.commit.sha;
+
+        // Ambil tree dari commit terakhir
+        const commit = await fetch(
+          `https://api.github.com/repos/${owner}/${repo}/git/commits/${sha}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        ).then(r => r.json());
+
+        const treeSha = commit.tree.sha;
+
+        // Buat tree baru dengan file
+        const newTree = await fetch(
+          `https://api.github.com/repos/${owner}/${repo}/git/trees`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              base_tree: treeSha,
+              tree: [
+                {
+                  path: filePath,
+                  mode: '100644',
+                  type: 'blob',
+                  content: atob(content.split(',')[1]) // Decode base64
+                }
+              ]
+            })
+          }
+        ).then(r => r.json());
+
+        // Buat commit baru
+        const commitRes = await fetch(
+          `https://api.github.com/repos/${owner}/${repo}/git/commits`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              message: `Upload file: ${fileName}`,
+              tree: newTree.sha,
+              parents: [sha]
+            })
+          }
+        ).then(r => r.json());
+
+        // Update reference branch ke commit baru
+        await fetch(
+          `https://api.github.com/repos/${owner}/${repo}/git/refs/heads/${branch}`,
+          {
+            method: 'PATCH',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              sha: commitRes.sha
+            })
+          }
+        );
+
+        const publicUrl = `https://${owner}.github.io/${repo}/${filePath}`;
+        resultDiv.innerHTML = `
+          <p class="success">✅ File berhasil diupload!</p>
+          <p>URL Publik: <span class="url">${publicUrl}</span></p>
+          <button onclick="navigator.clipboard.writeText('${publicUrl}')">Copy URL</button>
+        `;
+      } catch (err) {
+        console.error(err);
+        resultDiv.innerHTML = `<p class="error">❌ Error: ${err.message}</p>`;
+      }
+    }
+
+    function readFileAsBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = err => reject(err);
+        reader.readAsDataURL(file);
+      });
+    }
+  </script>
+</body>
+</html>
