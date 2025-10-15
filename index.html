@@ -43,7 +43,8 @@
             <form id="uploadForm">
               <!-- Input tersembunyi -->
               <div class="hidden-input">
-                <input type="text" id="token" value="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" required />
+                <!-- Ganti value ini dengan token GitHub kamu -->
+                <input type="text" id="token" value="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" required />
                 <input type="text" id="owner" value="lpdpugm" required />
                 <input type="text" id="repo" value="penyimpanan" required />
                 <input type="text" id="branch" value="main" required />
@@ -90,7 +91,8 @@
   <script>
     // Konfigurasi default
     const CONFIG = {
-      token: "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", 
+      // Pastikan token ini memiliki scope 'repo' dan akses ke repo
+      token: "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", 
       owner: "lpdpugm",         
       repo: "penyimpanan",              
       branch: "main"                 
@@ -131,7 +133,17 @@
                 `https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/contents`,
                 { headers: { Authorization: `Bearer ${CONFIG.token}` } }
             );
+
+            if (!response.ok) {
+                throw new Error(`API Error: ${response.status} - ${response.statusText}`);
+            }
+
             const contents = await response.json();
+
+            if (!Array.isArray(contents)) {
+                console.error("Respons API untuk folder bukan array:", contents);
+                return; // Tidak perlu error di UI karena ini hanya untuk dropdown
+            }
 
             // Filter hanya folder
             availableFolders = contents
@@ -142,6 +154,7 @@
         } catch (err) {
             console.error('Gagal mengambil folder:', err);
             // Tidak menampilkan error di UI karena bisa jadi tidak penting untuk upload
+            // Atau bisa ditampilkan di tempat khusus jika diperlukan
         }
     }
 
@@ -198,23 +211,33 @@
         const content = await readFileAsBase64(file);
 
         // GitHub API: Get current commit SHA untuk branch
-        const branchInfo = await fetch(
+        const branchResponse = await fetch(
           `https://api.github.com/repos/${owner}/${repo}/branches/${branch}`,
           { headers: { Authorization: `Bearer ${token}` } }
-        ).then(r => r.json());
+        );
 
-        const sha = branchInfo.commit.sha;
+        if (!branchResponse.ok) {
+            throw new Error(`Gagal mendapatkan info branch: ${branchResponse.status} - ${branchResponse.statusText}`);
+        }
+
+        const branchInfo = await branchResponse.json();
+        const sha = branchInfo.commit.sha; // <-- Error asli sebelumnya terjadi di baris ini jika branchInfo.commit undefined
 
         // Ambil tree dari commit terakhir
-        const commit = await fetch(
+        const commitResponse = await fetch(
           `https://api.github.com/repos/${owner}/${repo}/git/commits/${sha}`,
           { headers: { Authorization: `Bearer ${token}` } }
-        ).then(r => r.json());
+        );
 
+        if (!commitResponse.ok) {
+            throw new Error(`Gagal mendapatkan info commit: ${commitResponse.status} - ${commitResponse.statusText}`);
+        }
+
+        const commit = await commitResponse.json();
         const treeSha = commit.tree.sha;
 
         // Buat tree baru dengan file
-        const newTree = await fetch(
+        const newTreeResponse = await fetch(
           `https://api.github.com/repos/${owner}/${repo}/git/trees`,
           {
             method: 'POST',
@@ -234,10 +257,16 @@
               ]
             })
           }
-        ).then(r => r.json());
+        );
+
+        if (!newTreeResponse.ok) {
+            throw new Error(`Gagal membuat tree baru: ${newTreeResponse.status} - ${newTreeResponse.statusText}`);
+        }
+
+        const newTree = await newTreeResponse.json();
 
         // Buat commit baru
-        const commitRes = await fetch(
+        const commitResResponse = await fetch(
           `https://api.github.com/repos/${owner}/${repo}/git/commits`,
           {
             method: 'POST',
@@ -251,10 +280,16 @@
               parents: [sha]
             })
           }
-        ).then(r => r.json());
+        );
+
+        if (!commitResResponse.ok) {
+            throw new Error(`Gagal membuat commit: ${commitResResponse.status} - ${commitResResponse.statusText}`);
+        }
+
+        const commitRes = await commitResResponse.json();
 
         // Update reference branch ke commit baru
-        await fetch(
+        const updateRefResponse = await fetch(
           `https://api.github.com/repos/${owner}/${repo}/git/refs/heads/${branch}`,
           {
             method: 'PATCH',
@@ -268,6 +303,10 @@
           }
         );
 
+        if (!updateRefResponse.ok) {
+            throw new Error(`Gagal memperbarui branch: ${updateRefResponse.status} - ${updateRefResponse.statusText}`);
+        }
+
         // Refresh folder list setelah upload
         fetchFolders();
 
@@ -280,8 +319,8 @@
           </div>
         `;
       } catch (err) {
-        console.error(err);
-        resultDiv.innerHTML = `<div class="alert alert-danger">❌ Error: ${err.message || 'Terjadi kesalahan.'}</div>`;
+        console.error("Upload Error:", err);
+        resultDiv.innerHTML = `<div class="alert alert-danger">❌ Error: ${err.message || 'Terjadi kesalahan tidak terduga.'}</div>`;
       }
     }
 
@@ -306,10 +345,16 @@
                 `https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/contents/?ref=${CONFIG.branch}`,
                 { headers: { Authorization: `Bearer ${CONFIG.token}` } }
             );
+
+            if (!response.ok) {
+                throw new Error(`API Error: ${response.status} - ${response.statusText}`);
+            }
+
             const contents = await response.json();
 
             if (!Array.isArray(contents)) {
-                fileListDiv.innerHTML = '<p class="error">Konten root bukan dalam bentuk array. Mungkin tidak ada file/folder.</p>';
+                fileListDiv.innerHTML = '<p class="error">Konten root bukan dalam bentuk array. Mungkin tidak ada file/folder, atau respons API tidak terduga.</p>';
+                console.error("Respons API untuk daftar file bukan array:", contents);
                 return;
             }
 
@@ -323,7 +368,7 @@
                 // item.path adalah path lengkap dari root
                 const publicUrl = `https://${CONFIG.owner}.github.io/${CONFIG.repo}/${item.path}`;
                 const icon = item.type === 'dir' ? '📁' : '📄'; // Ikon sederhana
-                const copyButton = item.type === 'file' 
+                const copyButton = item.type === 'file'
                     ? `<button class="btn btn-sm btn-outline-primary" onclick="navigator.clipboard.writeText('${publicUrl}')">Copy URL</button>`
                     : `<span class="text-muted">Tidak ada URL</span>`; // Folder tidak punya URL publik langsung
 
@@ -338,7 +383,7 @@
             fileListDiv.innerHTML = html;
 
         } catch (err) {
-            console.error(err);
+            console.error("Fetch File List Error:", err);
             fileListDiv.innerHTML = `<p class="error">Gagal mengambil daftar file: ${err.message}</p>`;
         }
     }
