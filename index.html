@@ -2,49 +2,76 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Upload File ke Repo GitHub</title>
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
   <style>
-    body { font-family: Arial, sans-serif; margin: 40px; }
-    .container { max-width: 800px; margin: auto; }
-    input, button, textarea { padding: 8px; margin: 5px 0; width: 100%; }
-    .warning { color: red; font-size: 0.9em; }
+    .hidden-input { display: none; }
     .success { color: green; }
     .error { color: red; }
     .url { font-family: monospace; word-break: break-all; }
   </style>
 </head>
-<body>
-  <div class="container">
-    <h1>Upload File ke Repo GitHub</h1>
-    <p class="warning">
-      ⚠️ Ini akan meng-upload file langsung ke repo kamu via GitHub API.<br>
-      Gunakan dengan token yang aman dan repo yang benar. Jangan bagikan halaman ini secara publik.
-    </p>
+<body class="bg-light">
+  <div class="container mt-5">
+    <div class="card shadow">
+      <div class="card-header bg-primary text-white">
+        <h4 class="mb-0">Upload File ke GitHub Repo</h4>
+      </div>
+      <div class="card-body">
+        <p class="text-muted">
+          ⚠️ File akan di-upload langsung ke repo GitHub kamu. Pastikan token dan repo benar.
+        </p>
 
-    <label for="token">GitHub Token:</label>
-    <input type="password" id="token" placeholder="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" required />
+        <!-- Form Upload -->
+        <form id="uploadForm">
+          <!-- Input tersembunyi -->
+          <div class="hidden-input">
+            <input type="text" id="token" value="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" required />
+            <input type="text" id="owner" value="lpdpugm" required />
+            <input type="text" id="repo" value="penyimpanan" required />
+            <input type="text" id="branch" value="main" required />
+          </div>
 
-    <label for="owner">Owner (username):</label>
-    <input type="text" id="owner" placeholder="lpdpugm" required />
+          <div class="mb-3">
+            <label for="folder" class="form-label">Folder Tujuan:</label>
+            <input type="text" class="form-control" id="folder" placeholder="contoh: uploads/" value="uploads/" />
+          </div>
 
-    <label for="repo">Repo:</label>
-    <input type="text" id="repo" placeholder="penyimpanan" required />
+          <div class="mb-3">
+            <label for="file" class="form-label">Pilih File:</label>
+            <input type="file" class="form-control" id="file" required />
+          </div>
 
-    <label for="branch">Branch (default: main):</label>
-    <input type="text" id="branch" placeholder="main" value="main" />
+          <button type="button" class="btn btn-success" onclick="uploadFile()">Upload ke GitHub</button>
+        </form>
 
-    <label for="folder">Folder Tujuan (opsional):</label>
-    <input type="text" id="folder" placeholder="contoh: uploads/" value="uploads/" />
-
-    <label for="file">Pilih File:</label>
-    <input type="file" id="file" required />
-
-    <button onclick="uploadFile()">Upload ke GitHub</button>
-
-    <div id="result"></div>
+        <!-- Hasil Upload -->
+        <div id="result" class="mt-4"></div>
+      </div>
+    </div>
   </div>
 
+  <!-- Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
   <script>
+    // Konfigurasi default
+    const CONFIG = {
+      token: "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", 
+      owner: "lpdpugm",         
+      repo: "penyimpanan",              
+      branch: "main"                 
+    };
+
+    document.addEventListener("DOMContentLoaded", () => {
+      document.getElementById("token").value = CONFIG.token;
+      document.getElementById("owner").value = CONFIG.owner;
+      document.getElementById("repo").value = CONFIG.repo;
+      document.getElementById("branch").value = CONFIG.branch;
+    });
+
     async function uploadFile() {
       const token = document.getElementById('token').value.trim();
       const owner = document.getElementById('owner').value.trim();
@@ -55,7 +82,7 @@
       const resultDiv = document.getElementById('result');
 
       if (!token || !owner || !repo || !fileInput.files[0]) {
-        resultDiv.innerHTML = '<p class="error">Semua field harus diisi.</p>';
+        resultDiv.innerHTML = '<p class="error">Token, owner, repo, dan file harus diisi.</p>';
         return;
       }
 
@@ -63,7 +90,7 @@
       const fileName = file.name;
       const filePath = (folder ? folder.replace(/\/$/, '') + '/' : '') + fileName;
 
-      resultDiv.innerHTML = '<p>Uploading...</p>';
+      resultDiv.innerHTML = '<p class="text-info">Uploading...</p>';
 
       try {
         const content = await readFileAsBase64(file);
@@ -141,13 +168,15 @@
 
         const publicUrl = `https://${owner}.github.io/${repo}/${filePath}`;
         resultDiv.innerHTML = `
-          <p class="success">✅ File berhasil diupload!</p>
-          <p>URL Publik: <span class="url">${publicUrl}</span></p>
-          <button onclick="navigator.clipboard.writeText('${publicUrl}')">Copy URL</button>
+          <div class="alert alert-success">
+            ✅ File berhasil diupload!<br>
+            <strong>URL Publik:</strong> <span class="url">${publicUrl}</span><br>
+            <button class="btn btn-sm btn-outline-success mt-2" onclick="navigator.clipboard.writeText('${publicUrl}')">Copy URL</button>
+          </div>
         `;
       } catch (err) {
         console.error(err);
-        resultDiv.innerHTML = `<p class="error">❌ Error: ${err.message}</p>`;
+        resultDiv.innerHTML = `<div class="alert alert-danger">❌ Error: ${err.message || 'Terjadi kesalahan.'}</div>`;
       }
     }
 
