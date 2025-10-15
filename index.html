@@ -52,7 +52,8 @@
               <div class="mb-3">
                 <label for="folderSelect" class="form-label">Folder Tujuan:</label>
                 <select class="form-select" id="folderSelect">
-                  <option value="uploads/" selected>uploads/</option>
+                  <option value="" selected>root (/)</option> <!-- Opsi root -->
+                  <option value="uploads/">uploads/</option>
                   <!-- Opsi folder akan diisi oleh JS -->
                 </select>
                 <input type="text" class="form-control mt-2" id="newFolderInput" placeholder="Nama folder baru..." style="display: none;">
@@ -73,7 +74,7 @@
 
           <!-- Tab Daftar File -->
           <div class="tab-pane fade" id="list" role="tabpanel">
-            <h5>Daftar File di Repo</h5>
+            <h5>Daftar File di Repo (Root)</h5>
             <div id="fileList" class="file-list">
               <p>Loading...</p>
             </div>
@@ -148,12 +149,15 @@
     function updateFolderDropdown(folders) {
         const select = document.getElementById('folderSelect');
         // Kosongkan opsi kecuali default
-        select.innerHTML = '<option value="uploads/" selected>uploads/</option>';
+        select.innerHTML = '<option value="" selected>root (/)</option><option value="uploads/">uploads/</option>';
         folders.forEach(folder => {
-            const option = document.createElement('option');
-            option.value = folder + '/';
-            option.textContent = folder + '/';
-            select.appendChild(option);
+            // Jangan duplikasi 'uploads' jika sudah ada
+            if (folder !== 'uploads') {
+                const option = document.createElement('option');
+                option.value = folder + '/';
+                option.textContent = folder + '/';
+                select.appendChild(option);
+            }
         });
     }
 
@@ -169,7 +173,7 @@
       const select = document.getElementById('folderSelect');
       const input = document.getElementById('newFolderInput');
       if (select.style.display !== 'none') {
-          folder = select.value;
+          folder = select.value; // Bisa berupa "", "uploads/", atau "folder_baru/"
       } else if (input.style.display !== 'none' && input.value.trim() !== '') {
           folder = input.value.trim();
           if (!folder.endsWith('/')) folder += '/';
@@ -185,6 +189,7 @@
 
       const file = fileInput.files[0];
       const fileName = file.name;
+      // Gabungkan folder dan nama file. Jika folder kosong (root), jangan tambahkan "/"
       const filePath = (folder ? folder.replace(/\/$/, '') + '/' : '') + fileName;
 
       resultDiv.innerHTML = '<p class="text-info">Uploading...</p>';
@@ -221,7 +226,7 @@
               base_tree: treeSha,
               tree: [
                 {
-                  path: filePath,
+                  path: filePath, // Path lengkap file
                   mode: '100644',
                   type: 'blob',
                   content: atob(content.split(',')[1]) // Decode base64
@@ -290,40 +295,42 @@
       });
     }
 
-    // Fungsi untuk mengambil dan menampilkan daftar file
+    // Fungsi untuk mengambil dan menampilkan daftar file dari ROOT
     async function fetchFileList() {
         const fileListDiv = document.getElementById('fileList');
         fileListDiv.innerHTML = '<p>Loading...</p>';
 
         try {
-            // Ambil konten root
+            // Ambil konten ROOT repo
             const response = await fetch(
-                `https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/contents/uploads?ref=${CONFIG.branch}`,
+                `https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/contents/?ref=${CONFIG.branch}`,
                 { headers: { Authorization: `Bearer ${CONFIG.token}` } }
             );
             const contents = await response.json();
 
             if (!Array.isArray(contents)) {
-                fileListDiv.innerHTML = '<p class="error">Tidak dapat mengambil daftar file. Pastikan folder uploads/ ada.</p>';
+                fileListDiv.innerHTML = '<p class="error">Tidak dapat mengambil daftar file dari root.</p>';
                 return;
             }
 
-            if (contents.length === 0) {
-                fileListDiv.innerHTML = '<p>Folder uploads kosong.</p>';
+            // Filter hanya file, bukan folder
+            const files = contents.filter(item => item.type === 'file');
+
+            if (files.length === 0) {
+                fileListDiv.innerHTML = '<p>Root folder kosong atau hanya berisi folder.</p>';
                 return;
             }
 
             let html = '<ul class="list-group">';
-            contents.forEach(item => {
-                if (item.type === 'file') { // Hanya tampilkan file, bukan folder
-                    const publicUrl = `https://${CONFIG.owner}.github.io/${CONFIG.repo}/${item.path}`;
-                    html += `
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <span>${item.name}</span>
-                            <button class="btn btn-sm btn-outline-primary" onclick="navigator.clipboard.writeText('${publicUrl}')">Copy URL</button>
-                        </li>
-                    `;
-                }
+            files.forEach(item => {
+                // item.path adalah path lengkap dari root
+                const publicUrl = `https://${CONFIG.owner}.github.io/${CONFIG.repo}/${item.path}`;
+                html += `
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>${item.name}</span>
+                        <button class="btn btn-sm btn-outline-primary" onclick="navigator.clipboard.writeText('${publicUrl}')">Copy URL</button>
+                    </li>
+                `;
             });
             html += '</ul>';
             fileListDiv.innerHTML = html;
