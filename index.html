@@ -74,7 +74,7 @@
 
           <!-- Tab Daftar File -->
           <div class="tab-pane fade" id="list" role="tabpanel">
-            <h5>Daftar File di Repo (Root)</h5>
+            <h5>Daftar File dan Folder di Repo (Root)</h5>
             <div id="fileList" class="file-list">
               <p>Loading...</p>
             </div>
@@ -295,7 +295,7 @@
       });
     }
 
-    // Fungsi untuk mengambil dan menampilkan daftar file dari ROOT
+    // Fungsi untuk mengambil dan menampilkan daftar file dan folder dari ROOT
     async function fetchFileList() {
         const fileListDiv = document.getElementById('fileList');
         fileListDiv.innerHTML = '<p>Loading...</p>';
@@ -309,26 +309,28 @@
             const contents = await response.json();
 
             if (!Array.isArray(contents)) {
-                fileListDiv.innerHTML = '<p class="error">Tidak dapat mengambil daftar file dari root.</p>';
+                fileListDiv.innerHTML = '<p class="error">Konten root bukan dalam bentuk array. Mungkin tidak ada file/folder.</p>';
                 return;
             }
 
-            // Filter hanya file, bukan folder
-            const files = contents.filter(item => item.type === 'file');
-
-            if (files.length === 0) {
-                fileListDiv.innerHTML = '<p>Root folder kosong atau hanya berisi folder.</p>';
+            if (contents.length === 0) {
+                fileListDiv.innerHTML = '<p>Root folder kosong.</p>';
                 return;
             }
 
             let html = '<ul class="list-group">';
-            files.forEach(item => {
+            contents.forEach(item => {
                 // item.path adalah path lengkap dari root
                 const publicUrl = `https://${CONFIG.owner}.github.io/${CONFIG.repo}/${item.path}`;
+                const icon = item.type === 'dir' ? '📁' : '📄'; // Ikon sederhana
+                const copyButton = item.type === 'file' 
+                    ? `<button class="btn btn-sm btn-outline-primary" onclick="navigator.clipboard.writeText('${publicUrl}')">Copy URL</button>`
+                    : `<span class="text-muted">Tidak ada URL</span>`; // Folder tidak punya URL publik langsung
+
                 html += `
                     <li class="list-group-item d-flex justify-content-between align-items-center">
-                        <span>${item.name}</span>
-                        <button class="btn btn-sm btn-outline-primary" onclick="navigator.clipboard.writeText('${publicUrl}')">Copy URL</button>
+                        <span>${icon} ${item.name} ${item.type === 'dir' ? '(Folder)' : '(File)'}</span>
+                        ${copyButton}
                     </li>
                 `;
             });
