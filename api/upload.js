@@ -5,7 +5,7 @@ export default async function handler(req, res) {
   if (!path || !content) return res.status(400).json({ message: 'Invalid request' });
 
   try {
-    const githubToken = process.env.GITHUB_TOKEN; // simpan di Vercel Environment Variable
+    const githubToken = process.env.GITHUB_TOKEN1; // simpan di Vercel Environment Variable
     const owner = 'lpdpugm';
     const repo = 'penyimpanan';
     const branch = 'main';
