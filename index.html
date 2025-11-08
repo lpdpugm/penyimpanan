@@ -1,40 +1,46 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <title>Mini Drive LPDP UGM</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
-    body { font-family: sans-serif; margin: 0; background: #f7f9fb; }
-    header { padding: 1em; background: #465fff; color: white; font-weight: bold; }
-    #path { margin-left: 10px; font-size: 0.9em; opacity: 0.8; }
-    #grid { display: flex; flex-wrap: wrap; gap: 16px; padding: 16px; }
+    body { background: #f9fafb; }
+    #dropzone {
+      position: fixed; inset: 0; background: rgba(70,95,255,0.1);
+      border: 3px dashed #465fff; color: #465fff; font-size: 1.3em;
+      display: none; align-items: center; justify-content: center; z-index: 50;
+    }
+    .context-menu {
+      position: absolute; background: white; border: 1px solid #ddd;
+      border-radius: 6px; box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+      display: none; flex-direction: column; z-index: 100;
+    }
+    .context-menu button {
+      border: none; background: none; padding: 8px 16px; text-align: left;
+    }
+    .context-menu button:hover {
+      background: #465fff; color: white;
+    }
     .item {
-      background: white; border-radius: 10px; padding: 12px; width: 150px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.1); cursor: pointer;
-      display: flex; flex-direction: column; align-items: center; text-align: center;
+      cursor: pointer; text-align: center; border: 1px solid #e5e7eb;
+      border-radius: 10px; padding: 12px; background: white;
+      transition: 0.2s; display: flex; flex-direction: column; align-items: center;
     }
     .item:hover { background: #eef1ff; }
-    .item img { width: 64px; height: 64px; object-fit: contain; }
-    #dropzone {
-      position: fixed; inset: 0; border: 3px dashed #465fff;
-      background: rgba(70,95,255,0.05); display: none;
-      align-items: center; justify-content: center; color: #465fff;
-      font-size: 1.2em; font-weight: bold;
-    }
-    #menu {
-      position: fixed; background: white; border: 1px solid #ddd; border-radius: 8px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.15); display: none;
-      flex-direction: column; z-index: 99;
-    }
-    #menu button { background: none; border: none; padding: 8px 16px; text-align: left; cursor: pointer; }
-    #menu button:hover { background: #465fff; color: white; }
+    .item img { width: 64px; height: 64px; }
   </style>
 </head>
-<body>
-  <header>📁 Mini Drive <span id="path">/</span></header>
-  <div id="grid"></div>
+<body class="p-3">
+
+  <div class="container">
+    <h3 class="mb-3 text-primary">📁 Mini Drive LPDP UGM</h3>
+    <p class="text-muted">Path: <span id="path">/</span></p>
+    <div id="grid" class="row g-3"></div>
+  </div>
+
   <div id="dropzone">Lepas file di sini untuk upload</div>
-  <div id="menu"></div>
+  <div id="menu" class="context-menu"></div>
 
   <script>
     const repoOwner = "lpdpugm";
@@ -55,10 +61,9 @@
       grid.innerHTML = "";
 
       if (path) {
-        const back = document.createElement("div");
-        back.className = "item";
-        back.textContent = "⬅️ ..";
-        back.onclick = () => listFolder(path.split("/").slice(0, -1).join("/"));
+        const back = createItem("⬅️ ..", "dir", "", () =>
+          listFolder(path.split("/").slice(0, -1).join("/"))
+        );
         grid.appendChild(back);
       }
 
@@ -68,44 +73,35 @@
         .filter(f => f.name !== "api")
         .sort((a, b) => a.type.localeCompare(b.type))
         .forEach(item => {
-          const div = document.createElement("div");
-          div.className = "item";
-          div.dataset.name = item.name;
-          div.dataset.path = item.path;
-          div.dataset.type = item.type;
-
           if (item.type === "dir") {
-            div.innerHTML = `<img src="https://cdn-icons-png.flaticon.com/512/716/716784.png"><div>${item.name}</div>`;
-            div.onclick = () => listFolder(item.path);
+            grid.appendChild(
+              createItem(item.name, "dir", item.path, () => listFolder(item.path))
+            );
           } else {
             const ext = item.name.split(".").pop().toLowerCase();
             if (!path && ["md", "html"].includes(ext)) return;
-            div.innerHTML = `<img src="https://cdn-icons-png.flaticon.com/512/337/337946.png"><div>${item.name}</div>`;
-            div.onclick = () => window.open(item.download_url);
+            grid.appendChild(
+              createItem(item.name, "file", item.path, () =>
+                window.open(item.download_url)
+              )
+            );
           }
-
-          grid.appendChild(div);
         });
     }
 
-    // Drag-drop upload
-    const dz = document.getElementById("dropzone");
-    document.body.addEventListener("dragover", e => {
-      e.preventDefault(); dz.style.display = "flex";
-    });
-    document.body.addEventListener("dragleave", e => {
-      e.preventDefault(); dz.style.display = "none";
-    });
-    document.body.addEventListener("drop", async e => {
-      e.preventDefault(); dz.style.display = "none";
-      const files = e.dataTransfer.files;
-      for (const f of files) {
-        const b64 = await toBase64(f);
-        const path = `${currentPath ? currentPath + "/" : ""}${f.name}`;
-        await uploadFile(path, b64);
-      }
-      listFolder(currentPath);
-    });
+    function createItem(name, type, path, onClick) {
+      const div = document.createElement("div");
+      div.className = "col-6 col-sm-4 col-md-3 col-lg-2";
+      div.innerHTML = `
+        <div class="item" data-type="${type}" data-name="${name}" data-path="${path}">
+          <img src="${type === "dir"
+            ? "https://cdn-icons-png.flaticon.com/512/716/716784.png"
+            : "https://cdn-icons-png.flaticon.com/512/337/337946.png"}">
+          <div>${name}</div>
+        </div>`;
+      div.querySelector(".item").onclick = onClick;
+      return div;
+    }
 
     async function uploadFile(path, content) {
       const res = await fetch("/api/upload", {
@@ -116,7 +112,34 @@
       return res.json();
     }
 
-    // Klik kanan menu
+    function toBase64(file) {
+      return new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result);
+        r.onerror = rej;
+        r.readAsDataURL(file);
+      });
+    }
+
+    // 🔹 Drag & Drop Upload
+    const dz = document.getElementById("dropzone");
+    document.body.addEventListener("dragover", e => {
+      e.preventDefault(); dz.style.display = "flex";
+    });
+    document.body.addEventListener("dragleave", e => {
+      e.preventDefault(); dz.style.display = "none";
+    });
+    document.body.addEventListener("drop", async e => {
+      e.preventDefault(); dz.style.display = "none";
+      for (const f of e.dataTransfer.files) {
+        const b64 = await toBase64(f);
+        const path = `${currentPath ? currentPath + "/" : ""}${f.name}`;
+        await uploadFile(path, b64);
+      }
+      listFolder(currentPath);
+    });
+
+    // 🔹 Klik kanan menu (Upload File + Folder Baru)
     const menu = document.getElementById("menu");
     document.addEventListener("contextmenu", e => {
       e.preventDefault();
@@ -130,16 +153,28 @@
         const fileUrl = `${baseUrl}/${encodeURIComponent(target.dataset.path).replace(/%2F/g, "/")}`;
         addMenu("Salin Link", () => {
           navigator.clipboard.writeText(fileUrl);
-          alert("Link disalin!");
+          alert("✅ Link disalin:\n" + fileUrl);
         });
-        addMenu("Hapus File", () => alert("Hapus file nanti bisa ditambah ke API."));
       } else {
+        addMenu("Upload File", async () => {
+          const input = document.createElement("input");
+          input.type = "file";
+          input.multiple = true;
+          input.onchange = async () => {
+            for (const f of input.files) {
+              const b64 = await toBase64(f);
+              const path = `${currentPath ? currentPath + "/" : ""}${f.name}`;
+              await uploadFile(path, b64);
+            }
+            listFolder(currentPath);
+          };
+          input.click();
+        });
         addMenu("Buat Folder Baru", async () => {
           const name = prompt("Nama folder baru:");
           if (!name) return;
-          const dummy = btoa(""); // kosong
           const folderPath = `${currentPath ? currentPath + "/" : ""}${name}/.keep`;
-          await uploadFile(folderPath, dummy);
+          await uploadFile(folderPath, btoa(""));
           listFolder(currentPath);
         });
       }
@@ -151,15 +186,6 @@
       btn.textContent = text;
       btn.onclick = fn;
       menu.appendChild(btn);
-    }
-
-    function toBase64(file) {
-      return new Promise((res, rej) => {
-        const r = new FileReader();
-        r.onload = () => res(r.result);
-        r.onerror = rej;
-        r.readAsDataURL(file);
-      });
     }
 
     listFolder();
