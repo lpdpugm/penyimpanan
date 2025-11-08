@@ -15,7 +15,7 @@
     .file-item:hover { background: #f1f3f5; }
     .file-item.selected { border: 2px solid #007bff; background: #e9f2ff; }
     .file-thumb {
-      width: 64px; height: 64px; object-fit: contain; margin-bottom: 8px;
+      width: 80px; height: 80px; object-fit: contain; margin-bottom: 8px;
       pointer-events: none;
     }
     .context-menu {
@@ -26,6 +26,10 @@
     .context-menu ul { list-style: none; margin: 0; padding: 5px 0; }
     .context-menu li { padding: 8px 15px; cursor: pointer; }
     .context-menu li:hover { background: #f1f1f1; }
+    footer {
+      text-align: center; color: #666; font-size: 0.9rem;
+      margin-top: 50px; padding: 20px 0; border-top: 1px solid #ddd;
+    }
   </style>
 </head>
 <body>
@@ -43,6 +47,8 @@
   <div id="contextMenu" class="context-menu">
     <ul id="contextMenuList"></ul>
   </div>
+
+  <footer>© 2025 Kelurahan LPDP UGM — All rights reserved.</footer>
 </div>
 
 <script>
@@ -72,7 +78,7 @@ function renderFiles(files) {
   const container = document.getElementById('fileContainer');
   container.innerHTML = '';
 
-  // filter di root (hide .md .html /api)
+  // sembunyikan hal tertentu di root
   if (currentPath === '') {
     files = files.filter(f =>
       !f.name.endsWith('.md') &&
@@ -88,16 +94,25 @@ function renderFiles(files) {
     item.className = 'file-item';
     item.draggable = false;
 
-    // thumbnail
-    let thumb = '📄';
+    // --- thumbnail handling ---
+    let thumbHTML = '';
     const ext = file.name.split('.').pop().toLowerCase();
-    if (isDir) thumb = '📁';
-    else if (['png','jpg','jpeg','gif','webp'].includes(ext))
-      thumb = `<img src="https://raw.githubusercontent.com/lpdpugm/penyimpanan/main/${file.path}" class="file-thumb" />`;
-    else if (ext === 'pdf')
-      thumb = `<img src="https://cdn.jsdelivr.net/npm/@iconify/icons-logos/pdf.svg" class="file-thumb" />`;
 
-    item.innerHTML = isDir ? `${thumb}<br>${file.name}` : `${thumb}<br>${file.name}`;
+    if (isDir) {
+      thumbHTML = `<img src="https://cdn-icons-png.flaticon.com/512/716/716784.png" class="file-thumb" alt="Folder">`;
+    } else if (['png','jpg','jpeg','gif','webp'].includes(ext)) {
+      thumbHTML = `<img src="https://raw.githubusercontent.com/lpdpugm/penyimpanan/main/${file.path}" class="file-thumb" alt="${file.name}">`;
+    } else if (ext === 'pdf') {
+      thumbHTML = `
+        <svg class="file-thumb" viewBox="0 0 48 48">
+          <rect width="48" height="48" rx="8" ry="8" fill="#ff3b30"></rect>
+          <text x="50%" y="60%" fill="white" font-size="16" font-weight="bold" text-anchor="middle">PDF</text>
+        </svg>`;
+    } else {
+      thumbHTML = `<img src="https://cdn-icons-png.flaticon.com/512/337/337946.png" class="file-thumb" alt="File">`;
+    }
+
+    item.innerHTML = `${thumbHTML}<br>${file.name}`;
 
     item.onclick = () => {
       document.querySelectorAll('.file-item').forEach(f => f.classList.remove('selected'));
