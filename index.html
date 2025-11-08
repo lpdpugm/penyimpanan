@@ -1,149 +1,374 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Penyimpanan LPDP UGM</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Penyimpanan LPDP UGM - Drive</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
-    body { background: #f8f9fa; }
-    .file-item {
-      width: 150px; text-align: center; padding: 15px; margin: 10px;
-      border-radius: 10px; cursor: pointer; background: white;
-      transition: all 0.2s ease;
+    body { background:#f5f7fb; }
+    .drive-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 16px;
     }
-    .file-item:hover { background: #f1f3f5; }
-    .file-item.selected { border: 2px solid #007bff; background: #e9f2ff; }
+    .drive-item {
+      background: #fff; border-radius: 10px; padding: 12px; text-align:center;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06); user-select: none; position:relative;
+    }
+    .drive-item:hover { transform: translateY(-3px); box-shadow: 0 6px 18px rgba(0,0,0,0.08); }
+    .drive-item.selected { outline: 3px solid #0d6efd; }
+    .drive-thumb { width:80px; height:80px; object-fit:cover; border-radius:6px; margin-bottom:8px; }
+    .drive-icon { width:80px; height:80px; margin-bottom:8px; opacity:0.9; }
+    .check-badge {
+      position:absolute; top:8px; right:8px; width:22px; height:22px; border-radius:50%;
+      background:#0d6efd; color:white; display:flex; align-items:center; justify-content:center; font-size:12px; display:none;
+    }
+    .drive-item.selected .check-badge { display:flex; }
+    .dropzone {
+      border:2px dashed #cbd5e1; border-radius:10px; padding:28px; text-align:center; color:#6b7280;
+    }
+    .dropzone.drag { background:#eaf2ff; border-color:#0d6efd; color:#0d6efd; }
     .context-menu {
-      position: absolute; display: none; z-index: 9999;
-      background: white; border: 1px solid #ccc; border-radius: 5px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      position:absolute; display:none; z-index:9999; min-width:180px;
+      background:white; border:1px solid #ddd; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,0.12);
     }
-    .context-menu ul { list-style: none; margin: 0; padding: 5px 0; }
-    .context-menu li {
-      padding: 8px 15px; cursor: pointer;
-    }
-    .context-menu li:hover {
-      background: #f1f1f1;
-    }
+    .context-menu button { width:100%; text-align:left; border:none; background:none; padding:10px 12px; }
+    .context-menu button:hover { background:#0d6efd; color:white; }
   </style>
 </head>
-<body>
-<div class="container py-4">
+<body class="container py-4">
   <h3 class="mb-3">📁 Penyimpanan LPDP UGM</h3>
 
-  <nav aria-label="breadcrumb">
+  <nav class="mb-3">
     <ol class="breadcrumb" id="breadcrumb">
       <li class="breadcrumb-item"><a href="#" onclick="navigateTo('')">🏠 Home</a></li>
     </ol>
   </nav>
 
-  <div class="d-flex flex-wrap" id="fileContainer"></div>
+  <div id="driveArea">
+    <div id="grid" class="drive-grid mb-3"></div>
 
-  <div id="contextMenu" class="context-menu">
-    <ul id="contextMenuList"></ul>
+    <div id="dropzone" class="dropzone">
+      Tarik & letakkan file di sini untuk upload ke <span id="currentPathLabel">Root</span>
+    </div>
   </div>
-</div>
+
+  <div id="contextMenu" class="context-menu"></div>
 
 <script>
-  let currentPath = '';
-  let selectedItem = null;
+const BASE_URL = "https://simpan-lpdpugm.vercel.app/"; // domain publikmu
+let currentPath = "";
+let selected = null;
 
-  async function loadFiles(path = '') {
-    currentPath = path;
-    const res = await fetch(`/api/upload?path=${encodeURIComponent(path)}`);
-    const files = await res.json();
-    renderBreadcrumb(path);
-    renderFiles(files);
+// hide these names at root
+const hideRootNames = new Set(["index.html","api","favicon.ico","README.md",".gitignore",".vercel"]);
+
+// helper: build public link (preserve slashes, encode spaces): use encodeURI
+function buildPublicLink(path) {
+  // ensure no leading slash
+  const p = path.replace(/^\/+/, "");
+  return BASE_URL + encodeURI(p);
+}
+
+// load contents via our backend
+async function fetchList(path = "") {
+  const res = await fetch(`/api/upload?path=${encodeURIComponent(path)}`);
+  if (!res.ok) {
+    const txt = await res.text();
+    alert("Error fetching folder: " + txt);
+    return [];
+  }
+  return res.json();
+}
+
+function renderBreadcrumb(path) {
+  const el = document.getElementById("breadcrumb");
+  el.innerHTML = `<li class="breadcrumb-item"><a href="#" onclick="navigateTo('')">🏠 Home</a></li>`;
+  if (!path) return;
+  const parts = path.split("/");
+  let acc = "";
+  parts.forEach((p,i) => {
+    acc += (i ? "/" : "") + p;
+    el.innerHTML += `<li class="breadcrumb-item"><a href="#" onclick="navigateTo('${acc}')">${p}</a></li>`;
+  });
+}
+
+function clearSelection() {
+  selected = null;
+  document.querySelectorAll(".drive-item").forEach(d => d.classList.remove("selected"));
+}
+
+function makeDriveItem(obj, isRoot) {
+  const div = document.createElement("div");
+  div.className = "drive-item";
+  div.dataset.path = obj.path;
+  div.dataset.type = obj.type;
+  // checkbox badge
+  const badge = document.createElement("div");
+  badge.className = "check-badge";
+  badge.innerHTML = "✓";
+  div.appendChild(badge);
+
+  // content (thumbnail or icon)
+  const ext = (obj.name.split(".").pop() || "").toLowerCase();
+  if (obj.type === "dir") {
+    const img = document.createElement("img");
+    img.src = "https://cdn-icons-png.flaticon.com/512/716/716784.png";
+    img.className = "drive-icon";
+    div.appendChild(img);
+  } else if (["png","jpg","jpeg","webp","gif"].includes(ext)) {
+    const img = document.createElement("img");
+    // use download_url for image. We can't call GitHub raw via CORS in some cases, but usually it's OK.
+    img.src = obj.download_url;
+    img.className = "drive-thumb";
+    img.alt = obj.name;
+    div.appendChild(img);
+  } else if (ext === "pdf") {
+    const img = document.createElement("img");
+    img.src = "https://cdn-icons-png.flaticon.com/512/337/337946.png";
+    img.className = "drive-icon";
+    div.appendChild(img);
+  } else if (["doc","docx"].includes(ext)) {
+    const img = document.createElement("img");
+    img.src = "https://cdn-icons-png.flaticon.com/512/337/337932.png";
+    img.className = "drive-icon";
+    div.appendChild(img);
+  } else {
+    const img = document.createElement("img");
+    img.src = "https://cdn-icons-png.flaticon.com/512/565/565547.png";
+    img.className = "drive-icon";
+    div.appendChild(img);
   }
 
-  function renderBreadcrumb(path) {
-    const breadcrumb = document.getElementById('breadcrumb');
-    const parts = path.split('/').filter(Boolean);
-    breadcrumb.innerHTML = `<li class="breadcrumb-item"><a href="#" onclick="navigateTo('')">🏠 Home</a></li>`;
-    let cumulative = '';
-    parts.forEach((p, i) => {
-      cumulative += (i ? '/' : '') + p;
-      breadcrumb.innerHTML += `<li class="breadcrumb-item"><a href="#" onclick="navigateTo('${cumulative}')">${p}</a></li>`;
-    });
-  }
+  // label (prevent text selection on dblclick)
+  const lbl = document.createElement("div");
+  lbl.style.userSelect = "none";
+  lbl.style.marginTop = "6px";
+  lbl.style.overflow = "hidden";
+  lbl.style.textOverflow = "ellipsis";
+  lbl.style.whiteSpace = "nowrap";
+  lbl.textContent = obj.name;
+  div.appendChild(lbl);
 
-  function renderFiles(files) {
-    const container = document.getElementById('fileContainer');
-    container.innerHTML = '';
-    files.forEach(file => {
-      const isDir = file.type === 'dir';
-      const item = document.createElement('div');
-      item.className = 'file-item';
-      item.innerHTML = isDir ? `📂<br>${file.name}` : `📄<br>${file.name}`;
-      
-      item.onclick = (e) => {
-        document.querySelectorAll('.file-item').forEach(f => f.classList.remove('selected'));
-        item.classList.add('selected');
-        selectedItem = file;
-      };
-
-      item.ondblclick = () => {
-        if (isDir) navigateTo(file.path);
-        else window.open(file.html_url, '_blank');
-      };
-
-      item.oncontextmenu = (e) => {
-        e.preventDefault();
-        document.querySelectorAll('.file-item').forEach(f => f.classList.remove('selected'));
-        item.classList.add('selected');
-        selectedItem = file;
-        showContextMenu(e, file);
-      };
-
-      container.appendChild(item);
-    });
-  }
-
-  function showContextMenu(e, file) {
-    const menu = document.getElementById('contextMenu');
-    const list = document.getElementById('contextMenuList');
-    const isDir = file.type === 'dir';
-
-    let html = '';
-    if (isDir) {
-      html += `<li onclick="navigateTo('${file.path}')">📂 Buka Folder</li>`;
-      html += `<li onclick="deleteItem('${file.path}')">🗑️ Hapus Folder</li>`;
+  // events
+  div.addEventListener("click", (e) => {
+    // toggle selection
+    if (selected && selected === div) {
+      div.classList.remove("selected");
+      selected = null;
     } else {
-      const fileURL = `https://simpan-lpdpugm.vercel.app/${encodeURIComponent(file.path.replace(/ /g, '%20'))}`;
-      html += `<li onclick="copyLink('${fileURL}')">🔗 Salin Link</li>`;
-      html += `<li onclick="deleteItem('${file.path}')">🗑️ Hapus File</li>`;
+      clearSelection();
+      div.classList.add("selected");
+      selected = div;
     }
+    e.stopPropagation();
+  });
 
-    list.innerHTML = html;
-    menu.style.display = 'block';
-    menu.style.left = `${e.pageX}px`;
-    menu.style.top = `${e.pageY}px`;
+  div.addEventListener("dblclick", (e) => {
+    // open / enter without selecting text
+    if (obj.type === "dir") {
+      navigateTo(obj.path);
+    } else {
+      // open file in new tab (public link)
+      const link = buildPublicLink(obj.path);
+      window.open(link, "_blank");
+    }
+    e.stopPropagation();
+  });
+
+  div.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    // ensure this item is selected
+    clearSelection();
+    div.classList.add("selected");
+    selected = div;
+    showContextMenu(e.pageX, e.pageY, obj);
+  });
+
+  return div;
+}
+
+async function load(path="") {
+  currentPath = path;
+  document.getElementById("currentPathLabel").textContent = path || "Root";
+  renderBreadcrumb(path);
+
+  const grid = document.getElementById("grid");
+  grid.innerHTML = `<div class="text-muted">Memuat...</div>`;
+  const items = await fetchList(path);
+  // items might be single object if file requested; ensure array
+  if (!Array.isArray(items)) {
+    grid.innerHTML = `<div class="text-danger">Tidak bisa menampilkan isi.</div>`;
+    return;
   }
 
-  window.onclick = () => document.getElementById('contextMenu').style.display = 'none';
+  // filter: hide /api folder and other web files in root, plus hide index.html and .html/.md in root
+  const filtered = items.filter(it => {
+    if (it.type === "dir" && it.name === "api") return false;
+    if (!path) {
+      const nl = it.name.toLowerCase();
+      if (hideRootNames.has(it.name)) return false;
+      const ext = nl.split(".").pop();
+      if (ext === "md" || ext === "html") return false;
+    }
+    return true;
+  });
 
-  function copyLink(url) {
-    navigator.clipboard.writeText(url);
-    alert('Tautan disalin:\n' + url);
-  }
+  // sort: dirs first
+  filtered.sort((a,b) => (a.type === b.type ? a.name.localeCompare(b.name) : (a.type === "dir" ? -1 : 1)));
 
-  async function deleteItem(path) {
-    if (!confirm(`Yakin hapus ${path}?`)) return;
-    const res = await fetch('/api/upload', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path })
+  grid.innerHTML = "";
+  // parent ".."
+  if (path) {
+    const parentDiv = document.createElement("div");
+    parentDiv.className = "drive-item";
+    parentDiv.innerHTML = `<div style="font-size:30px">⬅️</div><div style="margin-top:6px">Up</div>`;
+    parentDiv.addEventListener("dblclick", () => {
+      const parent = path.split("/").slice(0,-1).join("/");
+      navigateTo(parent);
     });
-    if (res.ok) loadFiles(currentPath);
-    else alert('Gagal menghapus file.');
+    grid.appendChild(parentDiv);
   }
 
-  function navigateTo(path) {
-    loadFiles(path);
+  filtered.forEach(it => {
+    const el = makeDriveItem(it, !path);
+    grid.appendChild(el);
+  });
+}
+
+// navigation
+function navigateTo(path) { load(path); }
+
+// context menu
+const contextMenu = document.getElementById("contextMenu");
+function showContextMenu(x, y, obj) {
+  contextMenu.innerHTML = "";
+  const isDir = obj.type === "dir";
+
+  function addBtn(label, fn) {
+    const btn = document.createElement("button");
+    btn.textContent = label;
+    btn.addEventListener("click", async (e) => { e.stopPropagation(); contextMenu.style.display = 'none'; await fn(); });
+    contextMenu.appendChild(btn);
   }
 
-  loadFiles();
+  if (isDir) {
+    addBtn("📂 Open", () => navigateTo(obj.path));
+    addBtn("📤 Upload Here", () => triggerUploadTo(obj.path));
+    addBtn("📁 New Folder", () => createFolder(obj.path));
+    addBtn("🗑️ Delete Folder", () => deletePath(obj.path));
+  } else {
+    addBtn("🔗 Salin Link", () => {
+      const link = buildPublicLink(obj.path);
+      navigator.clipboard.writeText(link);
+      alert("Link disalin:\n" + link);
+    });
+    addBtn("📤 Download / Open", () => window.open(buildPublicLink(obj.path), "_blank"));
+    addBtn("🗑️ Hapus File", () => deletePath(obj.path));
+  }
+
+  // common
+  addBtn("🔄 Refresh", () => load(currentPath));
+
+  contextMenu.style.left = x + "px";
+  contextMenu.style.top = y + "px";
+  contextMenu.style.display = "block";
+}
+
+// hide context on click
+window.addEventListener("click", () => contextMenu.style.display = "none");
+
+// upload helpers
+function triggerUploadTo(path) {
+  // create file input
+  const input = document.createElement("input");
+  input.type = "file"; input.multiple = true;
+  input.onchange = async (e) => {
+    for (const f of e.target.files) {
+      await uploadFileTo(path, f);
+    }
+    load(currentPath);
+  };
+  input.click();
+}
+
+async function uploadFileTo(path, file) {
+  const b64 = await toBase64(file);
+  // POST to /api/upload
+  await fetch("/api/upload", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ path: path || "", filename: file.name, content: b64.split(",")[1] })
+  });
+}
+
+function toBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+// create folder (inside path or root)
+async function createFolder(pathParent) {
+  const name = prompt("Nama folder baru:");
+  if (!name) return;
+  await fetch("/api/upload", {
+    method: "PUT",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ path: pathParent || "", folderName: name })
+  });
+  load(currentPath);
+}
+
+// delete file/folder (if folder, it deletes the path if there is .keep; otherwise user must delete items individually)
+async function deletePath(path) {
+  if (!confirm(`Yakin hapus: ${path} ?`)) return;
+  // we will attempt to delete the exact path (file). If path is folder, try to delete .keep
+  // if path is folder, we try deleting path + '/.keep' first
+  if (!path) return alert("Invalid path");
+  // Try delete as file
+  let res = await fetch("/api/upload", {
+    method: "DELETE",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ path })
+  });
+  if (res.ok) {
+    alert("Terhapus: " + path);
+    load(currentPath);
+    return;
+  }
+  // maybe it's folder: try delete .keep inside
+  res = await fetch("/api/upload", {
+    method: "DELETE",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ path: path + "/.keep" })
+  });
+  if (res.ok) {
+    alert("Folder placeholder .keep terhapus: " + path);
+    load(currentPath);
+    return;
+  }
+  const txt = await res.text();
+  alert("Gagal menghapus: " + txt);
+}
+
+// drag & drop to current path
+const dz = document.getElementById("dropzone");
+dz.addEventListener("dragover", (e)=>{ e.preventDefault(); dz.classList.add("drag"); });
+dz.addEventListener("dragleave", ()=> dz.classList.remove("drag") );
+dz.addEventListener("drop", async (e)=> {
+  e.preventDefault(); dz.classList.remove("drag");
+  const files = e.dataTransfer.files;
+  for (const f of files) await uploadFileTo(currentPath, f);
+  load(currentPath);
+});
+
+// initial load
+load("");
 </script>
 </body>
 </html>
