@@ -2,18 +2,18 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <title>File Uploader GitHub</title>
+  <title>File Uploader - LPDP UGM</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss/dist/tailwind.min.css">
 </head>
-<body class="bg-gray-100 p-10">
-  <div class="max-w-2xl mx-auto bg-white p-6 rounded-xl shadow">
-    <h2 class="text-2xl font-bold mb-4">📁 Upload File ke GitHub</h2>
+<body class="bg-gray-100 min-h-screen p-8">
+  <div class="max-w-3xl mx-auto bg-white p-6 rounded-xl shadow">
+    <h1 class="text-2xl font-bold mb-4">📁 Penyimpanan Dokumen LPDP UGM</h1>
 
-    <!-- Form Upload -->
-    <form id="uploadForm" class="space-y-3">
+    <!-- Upload Form -->
+    <form id="uploadForm" class="mb-6 space-y-3">
       <div>
         <label class="block font-semibold mb-1">Pilih File:</label>
-        <input type="file" id="fileInput" class="block w-full">
+        <input type="file" id="fileInput" class="block w-full border p-2 rounded">
       </div>
 
       <div>
@@ -33,73 +33,105 @@
       </button>
     </form>
 
-    <p id="status" class="mt-3 text-gray-600"></p>
+    <p id="status" class="text-gray-600 mb-4"></p>
 
-    <hr class="my-6">
+    <!-- Navigasi Folder -->
+    <div class="mb-4 text-sm text-gray-600">
+      <span id="currentPath">📂 /</span>
+    </div>
 
-    <h3 class="text-xl font-semibold mb-3">📂 Daftar File di Repo</h3>
-    <ul id="fileList" class="space-y-1 text-blue-700 underline"></ul>
+    <ul id="fileList" class="space-y-2"></ul>
   </div>
 
   <script>
-    const repoOwner = "lpdpugm"; // 🔧 ganti
-    const repoName = "penyimpanan"; // 🔧 ganti
+    const repoOwner = "lpdpugm";
+    const repoName = "penyimpanan";
     const branch = "main";
-    const apiBase = `https://api.github.com/repos/${repoOwner}/${repoName}/contents`;
+    const baseApi = `https://api.github.com/repos/${repoOwner}/${repoName}/contents`;
+    const baseUrl = "https://simpan-lpdpugm.vercel.app";
 
-    // 🔍 Ekstensi file yang ditampilkan
-    const allowedExtensions = ['png', 'jpg', 'jpeg', 'pdf', 'docx', 'xlsx', 'pptx', 'csv', 'zip'];
+    let currentPath = "";
 
-    // 🔄 Ambil daftar file dari semua folder (rekursif)
-    async function loadFiles(path = "", listElem = null) {
-      const res = await fetch(`${apiBase}/${path}?ref=${branch}`);
-      const files = await res.json();
+    async function fetchContents(path = "") {
+      const res = await fetch(`${baseApi}/${path}?ref=${branch}`);
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    }
 
-      if (!Array.isArray(files)) return;
+    // 🔄 Load folder atau file di path tertentu
+    async function loadDirectory(path = "") {
+      currentPath = path;
+      const fileList = document.getElementById("fileList");
+      const currentPathLabel = document.getElementById("currentPath");
 
-      for (const f of files) {
-        if (f.type === "dir") {
+      currentPathLabel.textContent = "📂 /" + (path ? path : "");
+
+      fileList.innerHTML = "🔄 Memuat...";
+
+      const items = await fetchContents(path);
+      fileList.innerHTML = "";
+
+      // Tambah tombol naik ke atas folder
+      if (path) {
+        const parentPath = path.split("/").slice(0, -1).join("/");
+        const up = document.createElement("li");
+        up.innerHTML = `<button class="text-blue-600 underline" onclick="loadDirectory('${parentPath}')">⬅️ Kembali</button>`;
+        fileList.appendChild(up);
+      }
+
+      // Urutkan: folder dulu, lalu file
+      items.sort((a, b) => (a.type > b.type ? 1 : -1));
+
+      for (const item of items) {
+        if (item.type === "dir") {
           const li = document.createElement("li");
-          li.innerHTML = `<span class="font-semibold">${f.path}/</span>`;
-          if (!listElem) fileList.appendChild(li);
+          li.innerHTML = `
+            <button class="text-blue-700 font-semibold underline" onclick="loadDirectory('${item.path}')">
+              📁 ${item.name}
+            </button>
+          `;
+          fileList.appendChild(li);
+        } else if (item.type === "file") {
+          const ext = item.name.split(".").pop().toLowerCase();
+          const isRoot = !path;
 
-          const ul = document.createElement("ul");
-          ul.classList.add("ml-6", "list-disc");
-          li.appendChild(ul);
-          if (!listElem) fileList.appendChild(li);
-          await loadFiles(f.path, ul);
-        } else if (f.type === "file") {
-          const ext = f.name.split(".").pop().toLowerCase();
-          if (allowedExtensions.includes(ext)) {
-            const li = document.createElement("li");
-            li.innerHTML = `<a href="${f.download_url}" target="_blank">${f.path}</a>`;
-            (listElem || fileList).appendChild(li);
-          }
+          // di root: sembunyikan md dan html
+          if (isRoot && (ext === "md" || ext === "html")) continue;
+
+          const encodedPath = encodeURIComponent(item.path).replace(/%2F/g, "/").replace(/%20/g, "%20");
+          const fileUrl = `${baseUrl}/${encodedPath}`;
+
+          const li = document.createElement("li");
+          li.innerHTML = `
+            <div class="flex items-center justify-between border rounded p-2">
+              <a href="${item.download_url}" target="_blank" class="text-blue-700">${item.name}</a>
+              <button onclick="copyUrl('${fileUrl}')" class="text-sm bg-gray-200 px-2 py-1 rounded hover:bg-gray-300">
+                Salin URL
+              </button>
+            </div>
+          `;
+          fileList.appendChild(li);
         }
       }
     }
 
-    // 🧭 Muat daftar folder untuk dropdown
-    async function loadFolders(path = "", folderList = []) {
-      const res = await fetch(`${apiBase}/${path}?ref=${branch}`);
-      const items = await res.json();
+    async function loadFolderList(path = "", folderList = []) {
+      const res = await fetch(`${baseApi}/${path}?ref=${branch}`);
+      const data = await res.json();
+      if (!Array.isArray(data)) return folderList;
 
-      if (!Array.isArray(items)) return folderList;
-
-      for (const item of items) {
+      for (const item of data) {
         if (item.type === "dir") {
           folderList.push(item.path);
-          await loadFolders(item.path, folderList);
+          await loadFolderList(item.path, folderList);
         }
       }
       return folderList;
     }
 
     async function init() {
-      document.getElementById("fileList").innerHTML = "🔄 Memuat daftar file...";
-      await loadFiles();
-
-      const folders = await loadFolders();
+      await loadDirectory();
+      const folders = await loadFolderList();
       const select = document.getElementById("folderSelect");
       folders.forEach(f => {
         const opt = document.createElement("option");
@@ -114,17 +146,9 @@
       const file = document.getElementById("fileInput").files[0];
       if (!file) return alert("Pilih file terlebih dahulu.");
 
-      const selectedFolder = document.getElementById("folderSelect").value;
+      const folderSelect = document.getElementById("folderSelect").value;
       const newFolder = document.getElementById("newFolder").value.trim();
-
-      let targetPath = "";
-      if (newFolder) {
-        targetPath = `${newFolder}/${file.name}`;
-      } else if (selectedFolder) {
-        targetPath = `${selectedFolder}/${file.name}`;
-      } else {
-        targetPath = file.name;
-      }
+      const path = newFolder ? `${newFolder}/${file.name}` : (folderSelect ? `${folderSelect}/${file.name}` : file.name);
 
       document.getElementById("status").textContent = "🚀 Mengunggah...";
 
@@ -132,16 +156,12 @@
       const res = await fetch("/api/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          path: targetPath,
-          content: base64
-        })
+        body: JSON.stringify({ path, content: base64 })
       });
-
       const data = await res.json();
+
       document.getElementById("status").textContent = data.message || "Selesai.";
-      document.getElementById("fileList").innerHTML = "";
-      await loadFiles();
+      await loadDirectory(currentPath);
     });
 
     function fileToBase64(file) {
@@ -150,6 +170,12 @@
         reader.onload = () => resolve(reader.result.split(",")[1]);
         reader.onerror = reject;
         reader.readAsDataURL(file);
+      });
+    }
+
+    function copyUrl(url) {
+      navigator.clipboard.writeText(url).then(() => {
+        alert("✅ Link disalin:\n" + url);
       });
     }
 
