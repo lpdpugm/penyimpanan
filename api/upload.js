@@ -1,4 +1,5 @@
 // api/upload.js
+// Backend for listing, uploading, creating folder, deleting files/folders
 export default async function handler(req, res) {
   const GITHUB_TOKEN = process.env.GITHUB_TOKEN1;
   const REPO_OWNER = "lpdpugm";
@@ -6,7 +7,7 @@ export default async function handler(req, res) {
   const BRANCH = "main";
 
   if (!GITHUB_TOKEN) {
-    return res.status(500).json({ error: "Token tidak ditemukan di environment variable (GITHUB_TOKEN1)" });
+    return res.status(500).json({ error: "Missing GITHUB_TOKEN1 in environment variables" });
   }
 
   const headers = {
@@ -14,93 +15,119 @@ export default async function handler(req, res) {
     Accept: "application/vnd.github.v3+json",
   };
 
-  // --- GET: List file/folder ---
+  // ---------- GET: list contents ----------
   if (req.method === "GET") {
     const { path = "" } = req.query;
     const apiUrl = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}?ref=${BRANCH}`;
-
     try {
-      const response = await fetch(apiUrl, { headers });
-      if (!response.ok) {
-        const errorText = await response.text();
-        return res.status(response.status).json({ error: errorText });
-      }
-
-      const data = await response.json();
-      return res.status(200).json(data);
+      const r = await fetch(apiUrl, { headers });
+      const text = await r.text();
+      if (!r.ok) return res.status(r.status).json({ error: text });
+      return res.status(200).send(text); // already JSON
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
   }
 
-  // --- POST: Upload file ---
+  // ---------- POST: upload file ----------
+  // body: { path (optional folder), filename, content (base64) }
   if (req.method === "POST") {
-    const { path, filename, content } = req.body;
-    if (!filename || !content) {
-      return res.status(400).json({ error: "filename dan content wajib diisi" });
-    }
+    const { path = "", filename, content } = req.body;
+    if (!filename || !content) return res.status(400).json({ error: "filename and content required" });
 
     const filePath = path ? `${path}/${filename}` : filename;
     const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${filePath}`;
-
     try {
-      // Cek apakah file sudah ada
+      // check existing
       const check = await fetch(url, { headers });
       const exists = check.status === 200;
-      const sha = exists ? (await check.json()).sha : null;
+      const sha = exists ? (await check.json()).sha : undefined;
 
       const payload = {
         message: exists ? `update ${filename}` : `upload ${filename}`,
-        content: content,
+        content,
         branch: BRANCH,
         ...(sha && { sha }),
       };
 
       const upload = await fetch(url, {
         method: "PUT",
-        headers: {
-          ...headers,
-          "Content-Type": "application/json",
-        },
+        headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
       const result = await upload.json();
-      return res.status(upload.status).json(result);
+      if (!upload.ok) return res.status(upload.status).json(result);
+      return res.status(200).json(result);
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
   }
 
-  // --- Buat Folder Baru (opsional) ---
+  // ---------- PUT: create folder ----------
+  // body: { path (optional), folderName }
   if (req.method === "PUT") {
-    const { path, folderName } = req.body;
+    const { path = "", folderName } = req.body;
+    if (!folderName) return res.status(400).json({ error: "folderName required" });
+
+    // create a .keep file so folder exists
     const folderPath = path ? `${path}/${folderName}/.keep` : `${folderName}/.keep`;
+    const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${folderPath}`;
+
+    const payload = {
+      message: `create folder ${folderName}`,
+      content: Buffer.from("").toString("base64"),
+      branch: BRANCH,
+    };
 
     try {
-      const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${folderPath}`;
-      const payload = {
-        message: `buat folder ${folderName}`,
-        content: Buffer.from("").toString("base64"),
-        branch: BRANCH,
-      };
-
-      const response = await fetch(url, {
+      const r = await fetch(url, {
         method: "PUT",
-        headers: {
-          ...headers,
-          "Content-Type": "application/json",
-        },
+        headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-
-      const data = await response.json();
-      return res.status(response.status).json(data);
+      const data = await r.json();
+      return res.status(r.status).json(data);
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
   }
 
-  res.setHeader("Allow", ["GET", "POST", "PUT"]);
+  // ---------- DELETE: delete file ----------
+  // body: { path }  (path is full path to file e.g. folder/file.pdf)
+  if (req.method === "DELETE") {
+    const { path } = req.body;
+    if (!path) return res.status(400).json({ error: "path required" });
+
+    const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}`;
+
+    try {
+      // need sha to delete
+      const check = await fetch(url, { headers });
+      if (!check.ok) {
+        const txt = await check.text();
+        return res.status(check.status).json({ error: txt });
+      }
+      const data = await check.json();
+      const sha = data.sha;
+      const payload = {
+        message: `delete ${path}`,
+        sha,
+        branch: BRANCH,
+      };
+      const r = await fetch(url, {
+        method: "DELETE",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const resData = await r.json();
+      if (!r.ok) return res.status(r.status).json(resData);
+      return res.status(200).json(resData);
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  res.setHeader("Allow", ["GET", "POST", "PUT", "DELETE"]);
   res.status(405).end(`Method ${req.method} not allowed`);
 }
