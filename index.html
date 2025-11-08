@@ -2,73 +2,158 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <title>Uploader GitHub</title>
+  <title>File Uploader GitHub</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss/dist/tailwind.min.css">
 </head>
 <body class="bg-gray-100 p-10">
-  <div class="max-w-lg mx-auto bg-white p-6 rounded-xl shadow">
-    <h2 class="text-xl font-bold mb-4">Upload File ke GitHub</h2>
-    <form id="uploadForm">
-      <input type="file" id="fileInput" class="block mb-4">
-      <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded">Upload</button>
+  <div class="max-w-2xl mx-auto bg-white p-6 rounded-xl shadow">
+    <h2 class="text-2xl font-bold mb-4">📁 Upload File ke GitHub</h2>
+
+    <!-- Form Upload -->
+    <form id="uploadForm" class="space-y-3">
+      <div>
+        <label class="block font-semibold mb-1">Pilih File:</label>
+        <input type="file" id="fileInput" class="block w-full">
+      </div>
+
+      <div>
+        <label class="block font-semibold mb-1">Pilih Folder Tujuan:</label>
+        <select id="folderSelect" class="w-full border p-2 rounded">
+          <option value="">(Root folder)</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block font-semibold mb-1">Atau buat folder baru:</label>
+        <input type="text" id="newFolder" placeholder="misal: laporan2025" class="w-full border p-2 rounded">
+      </div>
+
+      <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+        Upload File
+      </button>
     </form>
-    <p id="status" class="mt-2 text-gray-600"></p>
-    <hr class="my-4">
-    <h3 class="text-lg font-semibold mb-2">Daftar File</h3>
-    <ul id="fileList" class="text-blue-700 underline"></ul>
+
+    <p id="status" class="mt-3 text-gray-600"></p>
+
+    <hr class="my-6">
+
+    <h3 class="text-xl font-semibold mb-3">📂 Daftar File di Repo</h3>
+    <ul id="fileList" class="space-y-1 text-blue-700 underline"></ul>
   </div>
 
   <script>
-    const repoOwner = "lpdpugm"; // Ganti
-    const repoName = "penyimpanan"; // Ganti
+    const repoOwner = "lpdpugm"; // 🔧 ganti
+    const repoName = "penyimpanan"; // 🔧 ganti
     const branch = "main";
+    const apiBase = `https://api.github.com/repos/${repoOwner}/${repoName}/contents`;
 
-    async function loadFiles() {
-      const res = await fetch(`https://api.github.com/repos/${repoOwner}/${repoName}/contents/`);
+    // 🔍 Ekstensi file yang ditampilkan
+    const allowedExtensions = ['png', 'jpg', 'jpeg', 'pdf', 'docx', 'xlsx', 'pptx', 'csv', 'zip'];
+
+    // 🔄 Ambil daftar file dari semua folder (rekursif)
+    async function loadFiles(path = "", listElem = null) {
+      const res = await fetch(`${apiBase}/${path}?ref=${branch}`);
       const files = await res.json();
-      const list = document.getElementById('fileList');
-      list.innerHTML = '';
-      files.forEach(f => {
-        if (f.type === 'file') {
-          const li = document.createElement('li');
-          li.innerHTML = `<a href="${f.download_url}" target="_blank">${f.name}</a>`;
-          list.appendChild(li);
+
+      if (!Array.isArray(files)) return;
+
+      for (const f of files) {
+        if (f.type === "dir") {
+          const li = document.createElement("li");
+          li.innerHTML = `<span class="font-semibold">${f.path}/</span>`;
+          if (!listElem) fileList.appendChild(li);
+
+          const ul = document.createElement("ul");
+          ul.classList.add("ml-6", "list-disc");
+          li.appendChild(ul);
+          if (!listElem) fileList.appendChild(li);
+          await loadFiles(f.path, ul);
+        } else if (f.type === "file") {
+          const ext = f.name.split(".").pop().toLowerCase();
+          if (allowedExtensions.includes(ext)) {
+            const li = document.createElement("li");
+            li.innerHTML = `<a href="${f.download_url}" target="_blank">${f.path}</a>`;
+            (listElem || fileList).appendChild(li);
+          }
         }
+      }
+    }
+
+    // 🧭 Muat daftar folder untuk dropdown
+    async function loadFolders(path = "", folderList = []) {
+      const res = await fetch(`${apiBase}/${path}?ref=${branch}`);
+      const items = await res.json();
+
+      if (!Array.isArray(items)) return folderList;
+
+      for (const item of items) {
+        if (item.type === "dir") {
+          folderList.push(item.path);
+          await loadFolders(item.path, folderList);
+        }
+      }
+      return folderList;
+    }
+
+    async function init() {
+      document.getElementById("fileList").innerHTML = "🔄 Memuat daftar file...";
+      await loadFiles();
+
+      const folders = await loadFolders();
+      const select = document.getElementById("folderSelect");
+      folders.forEach(f => {
+        const opt = document.createElement("option");
+        opt.value = f;
+        opt.textContent = f;
+        select.appendChild(opt);
       });
     }
 
-    document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+    document.getElementById("uploadForm").addEventListener("submit", async (e) => {
       e.preventDefault();
-      const file = document.getElementById('fileInput').files[0];
-      if (!file) return;
+      const file = document.getElementById("fileInput").files[0];
+      if (!file) return alert("Pilih file terlebih dahulu.");
 
-      document.getElementById('status').textContent = "Mengunggah...";
+      const selectedFolder = document.getElementById("folderSelect").value;
+      const newFolder = document.getElementById("newFolder").value.trim();
+
+      let targetPath = "";
+      if (newFolder) {
+        targetPath = `${newFolder}/${file.name}`;
+      } else if (selectedFolder) {
+        targetPath = `${selectedFolder}/${file.name}`;
+      } else {
+        targetPath = file.name;
+      }
+
+      document.getElementById("status").textContent = "🚀 Mengunggah...";
 
       const base64 = await fileToBase64(file);
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          path: file.name,
-          content: base64,
+          path: targetPath,
+          content: base64
         })
       });
 
       const data = await res.json();
-      document.getElementById('status').textContent = data.message || 'Selesai.';
-      loadFiles();
+      document.getElementById("status").textContent = data.message || "Selesai.";
+      document.getElementById("fileList").innerHTML = "";
+      await loadFiles();
     });
 
     function fileToBase64(file) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onload = () => resolve(reader.result.split(",")[1]);
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
     }
 
-    loadFiles();
+    init();
   </script>
 </body>
 </html>
