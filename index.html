@@ -4,74 +4,144 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Penyimpanan LPDP UGM</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
-    body { background: #f8f9fa; }
-    .file-item:hover { background: #eef; cursor: pointer; }
-    #context-menu {
-      position: absolute; display: none; z-index: 1000;
-      background: white; border: 1px solid #ccc; border-radius: 5px; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    body { background-color: #f5f7fb; }
+    #breadcrumb a { text-decoration: none; color: #0d6efd; }
+    #breadcrumb span { color: #6c757d; }
+    .drive-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 16px;
     }
-    #context-menu a { display: block; padding: 8px 12px; color: #333; text-decoration: none; }
-    #context-menu a:hover { background: #007bff; color: white; }
-    .dropzone { border: 2px dashed #aaa; border-radius: 10px; padding: 40px; text-align: center; color: #666; }
+    .drive-item {
+      background: white;
+      border-radius: 10px;
+      text-align: center;
+      padding: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      transition: 0.2s;
+      cursor: pointer;
+      user-select: none;
+    }
+    .drive-item:hover {
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      transform: translateY(-2px);
+    }
+    .drive-item img {
+      width: 48px; height: 48px; margin-bottom: 8px;
+    }
+    .context-menu {
+      position: absolute;
+      display: none;
+      background: white;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      z-index: 1000;
+      min-width: 180px;
+    }
+    .context-menu a {
+      display: block;
+      padding: 10px 14px;
+      color: #333;
+      text-decoration: none;
+    }
+    .context-menu a:hover {
+      background: #007bff;
+      color: white;
+    }
+    .dropzone {
+      border: 2px dashed #ccc;
+      border-radius: 12px;
+      padding: 40px;
+      text-align: center;
+      color: #888;
+      transition: background 0.2s;
+    }
+    .dropzone.dragover {
+      background: #e3f2fd;
+      border-color: #0d6efd;
+      color: #0d6efd;
+    }
   </style>
 </head>
 <body class="container py-4">
-  <h2 class="mb-3">📁 Penyimpanan LPDP UGM</h2>
+  <h3 class="mb-4 fw-bold">📁 Penyimpanan LPDP UGM</h3>
   <nav id="breadcrumb" class="mb-3"></nav>
-
-  <div id="file-list" class="list-group mb-4"></div>
-
+  
+  <div id="file-list" class="drive-grid mb-4"></div>
+  
   <div class="dropzone" id="dropzone">Tarik & letakkan file di sini untuk mengunggah</div>
-
-  <!-- Context menu -->
-  <div id="context-menu">
-    <a href="#" id="ctx-upload">Upload file</a>
-    <a href="#" id="ctx-newfolder">Buat folder baru</a>
+  
+  <div id="context-menu" class="context-menu">
+    <a href="#" id="ctx-upload">📤 Upload File</a>
+    <a href="#" id="ctx-newfolder">📁 Folder Baru</a>
+    <a href="#" id="ctx-refresh">🔄 Refresh</a>
   </div>
 
   <script>
     const BASE_URL = "https://simpan-lpdpugm.vercel.app/";
-    let currentPath = "";
     const fileList = document.getElementById("file-list");
     const breadcrumb = document.getElementById("breadcrumb");
     const contextMenu = document.getElementById("context-menu");
+    const dropzone = document.getElementById("dropzone");
+    let currentPath = "";
 
     async function loadFiles(path = "") {
       currentPath = path;
-      breadcrumb.innerHTML = path ? `<a href="#" onclick="loadFiles('')">Root</a> / ${path}` : "Root";
-      fileList.innerHTML = "<div class='text-muted'>Loading...</div>";
-
+      breadcrumb.innerHTML = buildBreadcrumb(path);
+      fileList.innerHTML = "<div class='text-center text-muted'>Memuat...</div>";
+      
       const res = await fetch(`/api/upload?path=${encodeURIComponent(path)}`);
       const data = await res.json();
-
       fileList.innerHTML = "";
 
-      // folder dulu
+      // Folder terlebih dahulu
       data.filter(f => f.type === "dir" && f.name !== "api").forEach(f => {
-        const div = document.createElement("div");
-        div.className = "list-group-item file-item fw-bold";
-        div.textContent = "📁 " + f.name;
-        div.onclick = () => loadFiles(path ? `${path}/${f.name}` : f.name);
-        fileList.appendChild(div);
+        const item = createDriveItem(f.name, "folder");
+        item.ondblclick = () => loadFiles(path ? `${path}/${f.name}` : f.name);
+        fileList.appendChild(item);
       });
 
-      // lalu file
-      data.filter(f => f.type === "file" && !f.name.endsWith(".md") && !f.name.endsWith(".html")).forEach(f => {
-        const div = document.createElement("div");
-        div.className = "list-group-item file-item";
-        const link = `${BASE_URL}${f.path}`;
-        div.innerHTML = `📄 ${f.name} <button class="btn btn-sm btn-outline-secondary float-end" onclick="copyLink('${link}')">Salin Link</button>`;
-        fileList.appendChild(div);
+      // File
+      data.filter(f => f.type === "file" && (path || (!f.name.endsWith(".md") && !f.name.endsWith(".html")))).forEach(f => {
+        const ext = f.name.split(".").pop().toLowerCase();
+        const item = createDriveItem(f.name, ext);
+        const link = `${BASE_URL}${f.path}`.replace(/ /g, "%20");
+        item.onclick = () => window.open(link, "_blank");
+        fileList.appendChild(item);
       });
+    }
+
+    function buildBreadcrumb(path) {
+      if (!path) return "Root";
+      const parts = path.split("/");
+      let link = "";
+      return parts.map((p, i) => {
+        link += (i ? "/" : "") + p;
+        return `<a href="#" onclick="loadFiles('${link}')">${p}</a>`;
+      }).join(" / ");
+    }
+
+    function createDriveItem(name, type) {
+      const div = document.createElement("div");
+      div.className = "drive-item";
+      let icon = "https://cdn-icons-png.flaticon.com/512/716/716784.png"; // file default
+      if (type === "folder") icon = "https://cdn-icons-png.flaticon.com/512/716/716784.png";
+      else if (["png","jpg","jpeg"].includes(type)) icon = "https://cdn-icons-png.flaticon.com/512/337/337940.png";
+      else if (["pdf"].includes(type)) icon = "https://cdn-icons-png.flaticon.com/512/337/337946.png";
+      else if (["doc","docx"].includes(type)) icon = "https://cdn-icons-png.flaticon.com/512/337/337932.png";
+
+      div.innerHTML = `<img src="${icon}"/><div class="small text-truncate">${name}</div>`;
+      return div;
     }
 
     async function uploadFile(file) {
       const reader = new FileReader();
       reader.onload = async (e) => {
         const base64 = e.target.result.split(",")[1];
-        const res = await fetch("/api/upload", {
+        await fetch("/api/upload", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -80,31 +150,17 @@
             content: base64
           }),
         });
-        await res.json();
         loadFiles(currentPath);
       };
       reader.readAsDataURL(file);
     }
 
-    function copyLink(url) {
-      navigator.clipboard.writeText(url.replace(/ /g, "%20"));
-      alert("Link disalin:\n" + url);
-    }
-
-    // Drag & drop
-    const dropzone = document.getElementById("dropzone");
-    dropzone.addEventListener("dragover", e => e.preventDefault());
-    dropzone.addEventListener("drop", e => {
-      e.preventDefault();
-      for (const file of e.dataTransfer.files) uploadFile(file);
-    });
-
-    // Klik kanan
+    // Context menu
     window.addEventListener("contextmenu", e => {
       e.preventDefault();
+      contextMenu.style.display = "block";
       contextMenu.style.top = `${e.pageY}px`;
       contextMenu.style.left = `${e.pageX}px`;
-      contextMenu.style.display = "block";
     });
     window.addEventListener("click", () => contextMenu.style.display = "none");
 
@@ -114,7 +170,6 @@
       input.onchange = e => uploadFile(e.target.files[0]);
       input.click();
     };
-
     document.getElementById("ctx-newfolder").onclick = async () => {
       const folderName = prompt("Nama folder baru:");
       if (!folderName) return;
@@ -125,6 +180,15 @@
       });
       loadFiles(currentPath);
     };
+    document.getElementById("ctx-refresh").onclick = () => loadFiles(currentPath);
+
+    // Drag & Drop
+    dropzone.addEventListener("dragover", e => { e.preventDefault(); dropzone.classList.add("dragover"); });
+    dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+    dropzone.addEventListener("drop", e => {
+      e.preventDefault(); dropzone.classList.remove("dragover");
+      for (const file of e.dataTransfer.files) uploadFile(file);
+    });
 
     loadFiles();
   </script>
