@@ -15,8 +15,8 @@
 
 ## 🧭 Tujuan
 Repositori ini dibuat untuk mempermudah:
-- 📤 **Penyimpanan dan akses berkas statis** (gambar, PDF, dsb.) secara terstruktur  
-- 🔗 **Pembuatan tautan langsung (direct link)** untuk digunakan di website utama dan GitHub Pages  
-- 🗂️ **Manajemen versi berkas** agar setiap perubahan terdokumentasi dengan baik  
+- 📤 **Penyimpanan dan akses berkas statis** (gambar, PDF, dsb.) secara terstruktur.
+- 🔗 **Pembuatan tautan langsung (direct link)** untuk digunakan di website utama dan GitHub Pages.
+- 🗂️ **Manajemen versi berkas** agar setiap perubahan terdokumentasi dengan baik.
 
 ---
