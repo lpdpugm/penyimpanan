@@ -1,41 +1,22 @@
-// api/list.js
-const REPO_OWNER = "lpdpugm";
-const REPO_NAME = "penyimpanan";
-const BRANCH = "main";
-
-function encodePathForApi(p) {
-  // preserve slashes but encode components
-  if (!p) return "";
-  return p.split("/").map(encodeURIComponent).join("/");
-}
-
 export default async function handler(req, res) {
-  const GITHUB_TOKEN = process.env.GITHUB_TOKEN1;
-  if (!GITHUB_TOKEN) return res.status(500).json({ error: "Missing GITHUB_TOKEN1" });
+  const path = req.query.path || "";
+  const githubToken = process.env.GITHUB_TOKEN1;
 
-  const pathRaw = req.query.path ? String(req.query.path).replace(/^\/*/, "").replace(/\/*$/,"") : "";
-  const apiPath = encodePathForApi(pathRaw);
-  const apiUrl = apiPath
-    ? `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${apiPath}?ref=${BRANCH}`
-    : `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents?ref=${BRANCH}`;
+  const url = `https://api.github.com/repos/lpdpugm/penyimpanan/contents/${path}?ref=main`;
+  const r = await fetch(url, { headers: { Authorization: `token ${githubToken}` } });
 
-  try {
-    const r = await fetch(apiUrl, {
-      headers: { Authorization: `token ${GITHUB_TOKEN}`, Accept: "application/vnd.github.v3+json" },
-    });
+  if (!r.ok) return res.status(r.status).json(await r.json());
+  const data = await r.json();
 
-    const text = await r.text();
-    if (!r.ok) return res.status(r.status).send(text);
-    const data = JSON.parse(text);
+  // filter root
+  const filtered = (path === "")
+    ? data.filter(item => !item.name.startsWith(".")
+        && item.name !== "index.html"
+        && item.name !== "login.html"
+        && item.name !== "style.css"
+        && item.name !== "script.js"
+        && item.name !== "api")
+    : data;
 
-    if (!pathRaw) {
-      // hide internal / top-level web files
-      const hide = new Set(["api", "index.html", "login.html", "README.md", ".gitignore", "style.css", "script.js", "favicon.ico"]);
-      return res.status(200).json(data.filter(item => !hide.has(item.name)));
-    }
-
-    return res.status(200).json(data);
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
-  }
+  res.json(filtered);
 }
