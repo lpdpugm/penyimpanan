@@ -1,230 +1,269 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Penyimpanan LPDP UGM</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
-    body { background: #f8f9fa; user-select: none; }
-    .file-item {
-      width: 150px; text-align: center; padding: 15px; margin: 10px;
-      border-radius: 10px; cursor: pointer; background: white;
-      transition: all 0.2s ease;
-    }
-    .file-item:hover { background: #f1f3f5; }
-    .file-item.selected { border: 2px solid #007bff; background: #e9f2ff; }
-    .file-thumb {
-      width: 80px; height: 80px; object-fit: contain; margin-bottom: 8px;
-      pointer-events: none;
-    }
-    .context-menu {
-      position: absolute; display: none; z-index: 9999;
-      background: white; border: 1px solid #ccc; border-radius: 5px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-    }
-    .context-menu ul { list-style: none; margin: 0; padding: 5px 0; }
-    .context-menu li { padding: 8px 15px; cursor: pointer; }
-    .context-menu li:hover { background: #f1f1f1; }
-    footer {
-      text-align: center; color: #666; font-size: 0.9rem;
-      margin-top: 50px; padding: 20px 0; border-top: 1px solid #ddd;
-    }
+    body { background:#f5f7fb; font-family:Inter, system-ui, Arial; user-select:none; }
+    .drive-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:16px; margin-bottom:18px; }
+    .drive-item { background:#fff; border-radius:10px; padding:12px; text-align:center; box-shadow:0 1px 4px rgba(0,0,0,0.06); position:relative; cursor:pointer; }
+    .drive-item.selected { outline:3px solid #0d6efd; transform:translateY(-4px); }
+    .thumb { width:90px; height:90px; object-fit:cover; border-radius:6px; margin-bottom:8px; display:block; margin-left:auto; margin-right:auto; }
+    .icon { width:90px; height:90px; opacity:0.95; margin-bottom:8px; }
+    .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:0.9rem; }
+    .context-menu { position:absolute; display:none; z-index:9999; min-width:180px; background:white; border:1px solid #ddd; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,0.12); }
+    .context-menu button { width:100%; text-align:left; border:none; background:none; padding:10px 12px; }
+    .context-menu button:hover { background:#0d6efd; color:white; }
+    .dropzone { border:2px dashed #d1d5db; border-radius:10px; padding:24px; text-align:center; color:#6b7280; }
+    .dropzone.drag { background:#eaf2ff; border-color:#0d6efd; color:#0d6efd; }
+    footer { text-align:center; color:#6b7280; margin-top:36px; padding-top:12px; border-top:1px solid #e6e6e6; }
+    .toolbar { display:flex; gap:8px; align-items:center; margin-bottom:12px; }
+    .breadcrumb a { text-decoration:none; }
   </style>
 </head>
-<body>
-<div class="container py-4">
-  <h3 class="mb-3">📁 Penyimpanan LPDP UGM</h3>
-
-  <nav aria-label="breadcrumb">
-    <ol class="breadcrumb" id="breadcrumb">
-      <li class="breadcrumb-item"><a href="#" onclick="navigateTo('')">🏠 Home</a></li>
-    </ol>
-  </nav>
-
-  <div class="d-flex flex-wrap" id="fileContainer"></div>
-
-  <div id="contextMenu" class="context-menu">
-    <ul id="contextMenuList"></ul>
+<body class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="mb-0">📁 Penyimpanan LPDP UGM</h3>
+    <div>
+      <button id="btnLogin" class="btn btn-outline-primary btn-sm">Masuk (Admin)</button>
+      <button id="btnLogout" class="btn btn-outline-secondary btn-sm d-none">Logout</button>
+    </div>
   </div>
 
+  <div class="toolbar">
+    <nav aria-label="breadcrumb" class="flex-grow-1">
+      <ol class="breadcrumb mb-0" id="breadcrumb">
+        <li class="breadcrumb-item"><a href="#" onclick="navigate('')">🏠 Home</a></li>
+      </ol>
+    </nav>
+
+    <div id="adminControls" style="display:none;">
+      <button id="uploadBtn" class="btn btn-sm btn-primary">Upload</button>
+      <button id="newFolderBtn" class="btn btn-sm btn-outline-primary">Folder Baru</button>
+    </div>
+  </div>
+
+  <div id="gridArea" class="drive-grid"></div>
+
+  <div id="dropzone" class="dropzone">Tarik & lepas file di sini untuk upload ke folder <strong id="pathLabel">Root</strong></div>
+
+  <div id="contextMenu" class="context-menu"></div>
+
   <footer>© 2025 Kelurahan LPDP UGM — All rights reserved.</footer>
-</div>
 
 <script>
-let currentPath = '';
-let selectedItem = null;
+const BASE_PUBLIC = "https://simpan-lpdpugm.vercel.app/";
+let currentPath = new URL(location).searchParams.get('path') || '';
+let selectedEl = null;
+let adminToken = sessionStorage.getItem('admin_token') || null;
 
-async function loadFiles(path = '') {
-  currentPath = path;
-  const res = await fetch(`/api/upload?path=${encodeURIComponent(path)}`);
-  const files = await res.json();
-  renderBreadcrumb(path);
-  renderFiles(files);
+const grid = document.getElementById('gridArea');
+const breadcrumb = document.getElementById('breadcrumb');
+const pathLabel = document.getElementById('pathLabel');
+const contextMenu = document.getElementById('contextMenu');
+
+function showAdminControls() {
+  if (adminToken) {
+    document.getElementById('adminControls').style.display = 'block';
+    document.getElementById('btnLogin').classList.add('d-none');
+    document.getElementById('btnLogout').classList.remove('d-none');
+  } else {
+    document.getElementById('adminControls').style.display = 'none';
+    document.getElementById('btnLogin').classList.remove('d-none');
+    document.getElementById('btnLogout').classList.add('d-none');
+  }
+}
+
+function truncateText(s, n=22) {
+  if (s.length <= n) return s;
+  const left = Math.floor((n-3)/2);
+  const right = n-3-left;
+  return s.slice(0,left) + '...' + s.slice(s.length-right);
+}
+
+function pushPathToURL(p) {
+  const u = new URL(location);
+  if (p) u.searchParams.set('path', p); else u.searchParams.delete('path');
+  history.pushState({}, "", u);
+  currentPath = p || '';
+  pathLabel.textContent = currentPath || 'Root';
+}
+
+async function list(path = '') {
+  pushPathToURL(path || '');
+  renderBreadcrumb(currentPath);
+  grid.innerHTML = '<div class="text-muted">Memuat...</div>';
+  try {
+    const res = await fetch(`/api/list?path=${encodeURIComponent(currentPath)}`);
+    if (!res.ok) {
+      const txt = await res.text();
+      grid.innerHTML = `<div class="text-danger">Error: ${txt}</div>`;
+      return;
+    }
+    const items = await res.json();
+    renderGrid(items);
+  } catch (err) {
+    grid.innerHTML = `<div class="text-danger">${err.message}</div>`;
+  }
 }
 
 function renderBreadcrumb(path) {
-  const breadcrumb = document.getElementById('breadcrumb');
-  const parts = path.split('/').filter(Boolean);
-  breadcrumb.innerHTML = `<li class="breadcrumb-item"><a href="#" onclick="navigateTo('')">🏠 Home</a></li>`;
-  let cumulative = '';
-  parts.forEach((p, i) => {
-    cumulative += (i ? '/' : '') + p;
-    breadcrumb.innerHTML += `<li class="breadcrumb-item"><a href="#" onclick="navigateTo('${cumulative}')">${p}</a></li>`;
+  const parts = path ? path.split('/') : [];
+  breadcrumb.innerHTML = `<li class="breadcrumb-item"><a href="#" onclick="navigate('')">🏠 Home</a></li>`;
+  let acc = '';
+  parts.forEach((p,i) => {
+    acc += (i?'/':'') + p;
+    breadcrumb.innerHTML += `<li class="breadcrumb-item"><a href="#" onclick="navigate('${acc}')">${p}</a></li>`;
   });
 }
 
-function renderFiles(files) {
-  const container = document.getElementById('fileContainer');
-  container.innerHTML = '';
+function renderGrid(items) {
+  grid.innerHTML = '';
+  if (!Array.isArray(items)) { grid.innerHTML = '<div class="text-muted">Kosong</div>'; return; }
+  items.sort((a,b) => (a.type === b.type ? a.name.localeCompare(b.name) : (a.type==='dir'? -1:1)));
 
-  // sembunyikan hal tertentu di root
-  if (currentPath === '') {
-    files = files.filter(f =>
-      !f.name.endsWith('.md') &&
-      !f.name.endsWith('.html') &&
-      f.name !== 'api' &&
-      f.name !== '.gitignore'
-    );
+  if (currentPath) {
+    const up = document.createElement('div');
+    up.className = 'drive-item';
+    up.innerHTML = `<div style="font-size:34px">⬆️</div><div class="name">Up</div>`;
+    up.ondblclick = () => navigate(currentPath.split('/').slice(0,-1).join('/'));
+    grid.appendChild(up);
   }
 
-  files.forEach(file => {
-    const isDir = file.type === 'dir';
-    const item = document.createElement('div');
-    item.className = 'file-item';
-    item.draggable = false;
+  for (const item of items) {
+    if (!currentPath) {
+      const hide = ['api','index.html','login.html','README.md','.gitignore','style.css','script.js','favicon.ico'];
+      if (hide.includes(item.name)) continue;
+      const ext = item.name.split('.').pop().toLowerCase();
+      if (ext === 'md' || ext === 'html') continue;
+    }
 
-    // --- thumbnail handling ---
-    let thumbHTML = '';
-    const ext = file.name.split('.').pop().toLowerCase();
+    const el = document.createElement('div');
+    el.className = 'drive-item';
+    el.dataset.path = item.path;
+    el.dataset.type = item.type;
 
-    if (isDir) {
-      thumbHTML = `<img src="https://cdn-icons-png.flaticon.com/512/716/716784.png" class="file-thumb" alt="Folder">`;
-    } else if (['png','jpg','jpeg','gif','webp'].includes(ext)) {
-      thumbHTML = `<img src="https://raw.githubusercontent.com/lpdpugm/penyimpanan/main/${file.path}" class="file-thumb" alt="${file.name}">`;
+    const ext = (item.name.split('.').pop() || '').toLowerCase();
+
+    if (item.type === 'dir') {
+      el.innerHTML = `<img src="https://cdn-icons-png.flaticon.com/512/716/716784.png" class="icon"><div class="name" title="${item.name}">${truncateText(item.name,22)}</div>`;
+    } else if (['png','jpg','jpeg','webp','gif'].includes(ext)) {
+      const thumb = document.createElement('img');
+      thumb.className = 'thumb';
+      thumb.src = `https://raw.githubusercontent.com/lpdpugm/penyimpanan/main/${item.path}`;
+      thumb.alt = item.name;
+      el.appendChild(thumb);
+      const nm = document.createElement('div'); nm.className='name'; nm.title=item.name; nm.textContent=truncateText(item.name,22); el.appendChild(nm);
     } else if (ext === 'pdf') {
-      thumbHTML = `
-        <svg class="file-thumb" viewBox="0 0 48 48">
-          <rect width="48" height="48" rx="8" ry="8" fill="#ff3b30"></rect>
-          <text x="50%" y="60%" fill="white" font-size="16" font-weight="bold" text-anchor="middle">PDF</text>
-        </svg>`;
+      el.innerHTML = `<svg class="icon" viewBox="0 0 48 48"><rect width="48" height="48" rx="6" fill="#ff3b30"/><text x="50%" y="60%" fill="#fff" font-weight="700" font-size="14" text-anchor="middle">PDF</text></svg><div class="name" title="${item.name}">${truncateText(item.name,22)}</div>`;
     } else {
-      thumbHTML = `<img src="https://cdn-icons-png.flaticon.com/512/337/337946.png" class="file-thumb" alt="File">`;
+      el.innerHTML = `<img src="https://cdn-icons-png.flaticon.com/512/337/337946.png" class="icon"><div class="name" title="${item.name}">${truncateText(item.name,22)}</div>`;
     }
 
-    item.innerHTML = `${thumbHTML}<br>${file.name}`;
+    el.addEventListener('click', (e) => { e.stopPropagation(); clearSelection(); el.classList.add('selected'); selectedEl = el; });
+    el.addEventListener('dblclick', (e) => { e.stopPropagation(); if (item.type === 'dir') navigate(item.path); else window.open(BASE_PUBLIC + encodeURI(item.path), '_blank'); });
+    el.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); clearSelection(); el.classList.add('selected'); selectedEl = el; openContextMenu(e.pageX, e.pageY, item); });
 
-    item.onclick = () => {
-      document.querySelectorAll('.file-item').forEach(f => f.classList.remove('selected'));
-      item.classList.add('selected');
-      selectedItem = file;
-    };
-
-    item.ondblclick = () => {
-      if (isDir) navigateTo(file.path);
-      else window.open(`https://simpan-lpdpugm.vercel.app/${file.path.replace(/ /g, '%20')}`, '_blank');
-    };
-
-    item.oncontextmenu = e => {
-      e.preventDefault();
-      document.querySelectorAll('.file-item').forEach(f => f.classList.remove('selected'));
-      item.classList.add('selected');
-      selectedItem = file;
-      showContextMenu(e, file);
-    };
-
-    container.appendChild(item);
-  });
-
-  // klik kanan area kosong
-  container.oncontextmenu = e => {
-    if (e.target.id === 'fileContainer' || e.target === container) {
-      e.preventDefault();
-      selectedItem = null;
-      showContextMenu(e, null);
-    }
-  };
-}
-
-function showContextMenu(e, file) {
-  const menu = document.getElementById('contextMenu');
-  const list = document.getElementById('contextMenuList');
-  let html = '';
-
-  if (file) {
-    const isDir = file.type === 'dir';
-    if (isDir) {
-      html += `<li onclick="navigateTo('${file.path}')">📂 Buka Folder</li>`;
-      html += `<li onclick="deleteItem('${file.path}')">🗑️ Hapus Folder</li>`;
-    } else {
-      const fileURL = `https://simpan-lpdpugm.vercel.app/${file.path.replace(/ /g, '%20')}`;
-      html += `<li onclick="copyLink('${fileURL}')">🔗 Salin Link</li>`;
-      html += `<li onclick="deleteItem('${file.path}')">🗑️ Hapus File</li>`;
-    }
-  } else {
-    // klik kanan area kosong
-    html += `<li onclick="newFolder()">📁 Folder Baru</li>`;
-    html += `<li onclick="uploadFile()">📤 Upload File</li>`;
+    grid.appendChild(el);
   }
 
-  list.innerHTML = html;
-  menu.style.display = 'block';
-  menu.style.left = `${e.pageX}px`;
-  menu.style.top = `${e.pageY}px`;
+  grid.addEventListener('contextmenu', (e) => {
+    if (e.target === grid) {
+      e.preventDefault(); openContextMenu(e.pageX, e.pageY, null);
+    }
+  }, { passive:false });
 }
 
-window.onclick = () => document.getElementById('contextMenu').style.display = 'none';
-
-function copyLink(url) {
-  navigator.clipboard.writeText(url);
-  alert('Tautan disalin:\n' + url);
+function clearSelection() {
+  document.querySelectorAll('.drive-item').forEach(x => x.classList.remove('selected'));
+  selectedEl = null;
 }
 
-async function deleteItem(path) {
-  if (!confirm(`Yakin hapus ${path}?`)) return;
-  const res = await fetch('/api/upload', {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path })
-  });
-  if (res.ok) loadFiles(currentPath);
-  else alert('Gagal menghapus file.');
+function navigate(path) { list(path || ''); }
+
+function openContextMenu(x,y, item) {
+  contextMenu.innerHTML = '';
+  const isAdmin = !!adminToken;
+  function addBtn(text, fn) {
+    const btn = document.createElement('button'); btn.textContent = text; btn.onclick = (e)=>{ e.stopPropagation(); contextMenu.style.display='none'; fn(); }; contextMenu.appendChild(btn);
+  }
+
+  if (!item) {
+    if (isAdmin) { addBtn('📤 Upload file here', ()=> triggerUpload(currentPath)); addBtn('📁 Buat folder baru', ()=> promptCreateFolder(currentPath)); }
+    else addBtn('🔄 Refresh', ()=> list(currentPath));
+  } else {
+    if (item.type === 'dir') {
+      addBtn('📂 Buka folder', ()=> navigate(item.path));
+      if (isAdmin) addBtn('📁 Buat folder di sini', ()=> promptCreateFolder(item.path));
+      if (isAdmin) addBtn('🗑️ Hapus folder (placeholder)', ()=> deletePath(item.path));
+    } else {
+      addBtn('🔗 Salin link', ()=> { const link = BASE_PUBLIC + encodeURI(item.path); navigator.clipboard.writeText(link); alert('Link disalin:\\n' + link); });
+      addBtn('📤 Buka/Download', ()=> window.open(BASE_PUBLIC + encodeURI(item.path), '_blank'));
+      if (isAdmin) addBtn('🗑️ Hapus file', ()=> deletePath(item.path));
+    }
+    addBtn('🔄 Refresh', ()=> list(currentPath));
+  }
+
+  contextMenu.style.left = x + 'px'; contextMenu.style.top = y + 'px'; contextMenu.style.display = 'block';
 }
+window.addEventListener('click', ()=> contextMenu.style.display = 'none');
 
-function navigateTo(path) { loadFiles(path); }
-
-async function newFolder() {
-  const name = prompt('Nama folder baru:');
-  if (!name) return;
-  await fetch('/api/upload', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ folder: true, path: `${currentPath}/${name}` })
-  });
-  loadFiles(currentPath);
-}
-
-function uploadFile() {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.onchange = async e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const content = await file.text();
-    await fetch('/api/upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        path: `${currentPath}/${file.name}`,
-        content: btoa(unescape(encodeURIComponent(content)))
-      })
-    });
-    loadFiles(currentPath);
-  };
+function triggerUpload(path) {
+  if (!adminToken) return alert('Login admin dulu untuk upload.');
+  const input = document.createElement('input'); input.type='file'; input.multiple=true;
+  input.onchange = async (e) => { const files = e.target.files; for (const f of files) await uploadFileTo(path, f); list(currentPath); };
   input.click();
 }
 
-loadFiles();
+async function uploadFileTo(path, file) {
+  const b64 = await fileToBase64(file);
+  const pure = b64.split(',')[1];
+  const payload = { path: path || '', filename: file.name, content: pure, token: adminToken };
+  const res = await fetch('/api/upload', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  if (!res.ok) { const txt = await res.text(); alert('Upload failed: ' + txt); }
+}
+
+function fileToBase64(file) {
+  return new Promise((res, rej) => { const reader = new FileReader(); reader.onload = ()=> res(reader.result); reader.onerror = rej; reader.readAsDataURL(file); });
+}
+
+async function promptCreateFolder(parent) {
+  if (!adminToken) return alert('Login admin dulu.');
+  const name = prompt('Nama folder baru:'); if (!name) return;
+  const payload = { path: parent || '', folderName: name, token: adminToken };
+  const r = await fetch('/api/folder', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  if (!r.ok) { const t=await r.text(); alert('Gagal buat folder: '+t); } else list(currentPath);
+}
+
+async function deletePath(path) {
+  if (!adminToken) return alert('Login admin dulu.');
+  if (!confirm('Yakin hapus: ' + path + ' ?')) return;
+  const r = await fetch('/api/delete', { method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ path, token: adminToken }) });
+  if (!r.ok) { const t = await r.text(); alert('Gagal hapus: ' + t); } else list(currentPath);
+}
+
+const dropzone = document.getElementById('dropzone');
+dropzone.addEventListener('dragover', (e)=>{ e.preventDefault(); dropzone.classList.add('drag'); });
+dropzone.addEventListener('dragleave', ()=> dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', async (e) => { e.preventDefault(); dropzone.classList.remove('drag'); if (!adminToken) return alert('Login admin untuk upload.'); const files = e.dataTransfer.files; for (const f of files) await uploadFileTo(currentPath, f); list(currentPath); });
+
+document.getElementById('btnLogin').addEventListener('click', async () => {
+  const user = prompt('Username:'); if (!user) return;
+  const pass = prompt('Password:'); if (!pass) return;
+  const res = await fetch('/api/auth', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: user, password: pass }) });
+  if (!res.ok) { alert('Login gagal'); return; }
+  const js = await res.json(); adminToken = js.token; sessionStorage.setItem('admin_token', adminToken); showAdminControls(); list(currentPath);
+});
+document.getElementById('btnLogout').addEventListener('click', () => { adminToken = null; sessionStorage.removeItem('admin_token'); showAdminControls(); list(currentPath); });
+
+document.getElementById('uploadBtn').addEventListener('click', ()=> triggerUpload(currentPath));
+document.getElementById('newFolderBtn').addEventListener('click', ()=> promptCreateFolder(currentPath));
+
+showAdminControls();
+list(currentPath);
+window.addEventListener('popstate', ()=> { const p = new URL(location).searchParams.get('path') || ''; list(p); });
 </script>
 </body>
 </html>
